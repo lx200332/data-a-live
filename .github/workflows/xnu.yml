@@ -15,6 +15,9 @@ on:
       keep_going:
         description: make -k (collect all compile errors in one run)
         default: "true"
+      patch_level:
+        description: Highest patch number to apply (empty = all). Used to bisect the water mark.
+        default: ""
   # no push trigger: every run is started by hand (private-repo macOS minutes are limited)
 
 concurrency:
@@ -27,6 +30,7 @@ env:
   MACOS_VERSION: ${{ inputs.macos_version || '13.5' }}
   KERNEL_CONFIG: ${{ inputs.kernel_config || 'DEVELOPMENT' }}
   MACHINE_CONFIG: ${{ inputs.machine_config || 'PANDORA' }}
+  PATCH_LEVEL: ${{ inputs.patch_level || '' }}
 
 jobs:
   build:
@@ -43,7 +47,16 @@ jobs:
           git -C dxb fetch -q --depth 1 "$DXB_REPO" "$DXB_SHA"
           git -C dxb checkout -q FETCH_HEAD
           # 12.5-14.3 use the top-level patches dir; ours go next to blacktop's
-          cp xnu/patches/*.patch xnu/patches/*.sh dxb/patches/
+          # PATCH_LEVEL truncates the patch series to the given high-water mark (bisecting).
+          if [ -n "$PATCH_LEVEL" ]; then
+            for f in xnu/patches/*.patch xnu/patches/*.sh; do
+              n=$(basename "$f" | sed 's/^\([0-9]*\).*/\1/')
+              if [ "$n" -le "$PATCH_LEVEL" ]; then cp "$f" dxb/patches/; fi
+            done
+            echo "patch level <= $PATCH_LEVEL: $(ls dxb/patches | wc -l) files"
+          else
+            cp xnu/patches/*.patch xnu/patches/*.sh dxb/patches/
+          fi
           # The staging scripts only run for SWEET; FUXI and PANDORA use the same staged sources
           sed -i '' 's/\[\[ "\${MACHINE_CONFIG:-}" == SWEET \]\]/[[ "${MACHINE_CONFIG:-}" =~ ^(SWEET|FUXI|PANDORA)$ ]]/' dxb/patches/*.sh
           grep -h 'MACHINE_CONFIG:-' dxb/patches/*.sh
