@@ -16,10 +16,10 @@ def sub(old, new, what):
 sub("""	if (!native && fWidth <= SWEET_FB_LOGICAL_W && fHeight <= SWEET_FB_LOGICAL_H) {""",
     """#if defined(PANDORA)
 	/*
-	 * The 17 Pro panel (1220x2656) is larger than the iPhone X one. Presented at its
+	 * The 17 Pro Max panel (1200x2608) is larger than the iPhone X one. Presented at its
 	 * own size, backboardd/UIKit have no layout for it and backboardd loops looking
-	 * for AppleM2ScalerCSCDriver. Present 1125x2436 and center it (47 px left/right,
-	 * 110 px top/bottom black border); the offsets below are then negative.
+	 * for AppleM2ScalerCSCDriver. Present 1125x2436 and center it (37 px left/right,
+	 * 86 px top/bottom black border); the offsets below are then negative.
 	 */
 	if (!native) {
 #else

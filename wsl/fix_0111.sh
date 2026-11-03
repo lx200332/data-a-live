@@ -8,7 +8,7 @@ for p, arg, msg in [('bsd/dev/fuxi_touch.c', 'fuxitouch', None),
     t = open(p).read()
     old = "\tint enabled = 1;\n\tthread_t thread;\n"
     new = ("#if defined(PANDORA)\n"
-           "\t/* Xiaomi 13 (SM8550) register addresses; the 17 Pro's differ. Off unless %s=1. */\n"
+           "\t/* Xiaomi 13 (SM8550) register addresses; the 17 Pro Max's differ. Off unless %s=1. */\n"
            "\tint enabled = 0;\n#else\n\tint enabled = 1;\n#endif\n\tthread_t thread;\n") % arg
     assert t.count(old) == 1, p
     t = t.replace(old, new)

@@ -28,8 +28,8 @@ sub("""	fOffX = (int32_t)(fLogicalW - fWidth) / 2;
 #if defined(PANDORA)
 	/*
 	 * sweetfb_fill=1: instead of the centered 1125x2436 area with a black border,
-	 * scale the presented display to the whole 1220x2656 panel (nearest neighbour,
-	 * x 1.084 / y 1.090; the aspect ratios differ by 0.5 %).
+	 * scale the presented display to the whole 1200x2608 panel (nearest neighbour,
+	 * x 1.067 / y 1.071; the aspect ratios differ by 0.4 %).
 	 */
 	int fill = 0;
 	PE_parse_boot_argn("sweetfb_fill", &fill, sizeof(fill));

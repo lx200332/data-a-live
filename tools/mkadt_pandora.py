@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Build the Apple Device Tree for the PANDORA xnu (Xiaomi 17 Pro, SM8850).
+"""Build the Apple Device Tree for the PANDORA xnu (Xiaomi 17 Pro Max, SM8850).
 
 Derived from ios-sweet tools/mkadt.py (dipa-studio/ios-sweet 425b2510). Phone values come from
-the 17 Pro's live FDT (device/DT_FINDINGS.md) and shim/hello measurements.
+the 17 Pro Max's live FDT (device/DT_FINDINGS.md) and shim/hello measurements.
 Usage:  mkadt_pandora.py OUT.adt [--dump] [--qemu]
   --qemu   QEMU virt twin: QEMU's GIC/timer, RAM at 0xb0000000 and ios-sweet's 1080x2400
            framebuffer at 0x9c000000 so tools/qemu-sweet.py can decode the screen.
@@ -53,7 +53,7 @@ DSP_SHM, DSP_SHM_SIZE = 0xb0000000, 0x100000
 GICD, GICD_SIZE = 0x17000000, 0x10000
 GICR, GICR_SIZE = 0x17080000, 0x200000   # 8 redistributors, stride 0x40000
 FB, FB_SIZE = 0xfc800000, 0x2b00000      # splash_region; ARGB8888, measured by shim/hello
-FB_W, FB_H, FB_STRIDE = 1220, 2656, 1220 * 4
+FB_W, FB_H, FB_STRIDE = 1200, 2608, 1200 * 4
 QEMU_FB, QEMU_FB_SIZE = 0x9c000000, 0x1700000
 QEMU_FB_W, QEMU_FB_H, QEMU_FB_STRIDE = 1080, 2400, 1080 * 4
 PANDORA_ECID = 0x50414e444f524101  # 'PANDORA' + 1, synthetic

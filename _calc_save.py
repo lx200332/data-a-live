@@ -1,0 +1,11 @@
+FB_W, FB_H, FB_STRIDE = 1200, 2608, 4800
+CH = 16 * 3
+BAND_H = CH + 48
+BAND_Y = FB_H - 400
+BAND_BYTES = FB_STRIDE * BAND_H
+SAVE_AREA = 0x100000
+print(f"BAND_H={BAND_H} BAND_BYTES={BAND_BYTES} (0x{BAND_BYTES:x}) SAVE_AREA=0x{SAVE_AREA:x}")
+print("band offset in fb:", BAND_Y * FB_STRIDE, "+", BAND_BYTES, "=",
+      BAND_Y * FB_STRIDE + BAND_BYTES, "< FB_SIZE", 0x2b00000)
+print("BAND_Y+BAND_H:", BAND_Y + BAND_H, "< FB_H", FB_H)
+print("slack:", hex(SAVE_AREA - BAND_BYTES))

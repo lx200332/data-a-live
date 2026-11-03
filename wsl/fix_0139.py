@@ -11,7 +11,7 @@ def sub(o, n):
 dsi = r'''/*
  * Panel brightness over DSI (0139). The main panel (DT "xiaomi q200 42 02 0a cmd mode dsc
  * dsi panel") is on DSI0 (0x09ac0000) and takes DCS 0x51 with two bytes, high byte first
- * (qcom,mdss-dsi-bl-inverted-dbv), 7..0x3fff, 0x1554 = top of the normal range (above it
+ * (qcom,mdss-dsi-bl-inverted-dbv), 7..0x3fff, 0x1fff = top of the normal range (above it
  * is Xiaomi's high-brightness mode), HS mode. The command goes through the test-pattern
  * FIFO, as dsi_ctrl_hw_cmn_kickoff_fifo_command / reset_cmd_fifo in the SM8850 msm_drm:
  * TPG_CTRL 0x15c = 0x30006, words to 0x17c, COMMAND_MODE_DMA_CTRL 0x3c |= embedded mode,
@@ -21,7 +21,7 @@ dsi = r'''/*
 extern "C" vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
 #define SWEET_DSI0_PA           0x09ac0000u
 #define SWEET_PANEL_BL_MIN      7u
-#define SWEET_PANEL_BL_MAX      0x1554u
+#define SWEET_PANEL_BL_MAX      0x1fffu
 static vm_offset_t sweet_dsi;
 static int sweet_dsi_bl = -1;           /* -1 unknown, 0 off/failed, 1 working */
 static unsigned sweet_dsi_logs;

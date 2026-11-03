@@ -23,7 +23,7 @@ import sys
 PAGE = 4096
 SZ_2M = 0x200000
 SLOT_ALIGN = 0x10000
-SAVE_AREA = 0x100000      # menu.c BAND_BYTES (4880 * 96) rounded up
+SAVE_AREA = 0x100000      # menu.c BAND_BYTES (4800 * 96) rounded up
 MAGIC = b'PNDBMCF2'
 
 

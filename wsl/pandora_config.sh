@@ -5,7 +5,7 @@ cd /opt/work/tree
 git checkout -q -- . && git clean -qfd
 sed -i 's/^SUPPORTED_ARM64_MACHINE_CONFIGS = \(.*\) FUXI$/SUPPORTED_ARM64_MACHINE_CONFIGS = \1 FUXI PANDORA/' makedefs/MakeInc.def
 sed -i '/^MACHINE_FLAGS_ARM64_FUXI = /a \
-# Xiaomi 17 Pro (pandora, SM8850): Fuxi providers with 4 KiB pages (no 16K granule on Oryon).\
+# Xiaomi 17 Pro Max (popsicle, SM8850): Fuxi providers with 4 KiB pages (no 16K granule on Oryon).\
 MACHINE_FLAGS_ARM64_PANDORA = -DARM64_BOARD_CONFIG_SWEET -DFUXI=1 -DPANDORA=1 -march=armv8.2-a+crypto' makedefs/MakeInc.def
 sed -i 's/\$(filter SWEET FUXI,\$(CURRENT_MACHINE_CONFIG))/$(filter SWEET FUXI PANDORA,$(CURRENT_MACHINE_CONFIG))/' makedefs/MakeInc.def libkern/conf/Makefile.template bsd/conf/Makefile.template
 sed 's/^# fuxi (Xiaomi 13, SM8550), single-CPU RAM bring-up:/# pandora (Xiaomi 17 Pro, SM8850), 4 KiB pages, otherwise as fuxi:/' config/MASTER.arm64.fuxi > config/MASTER.arm64.pandora

@@ -1204,15 +1204,15 @@ index 0000000..ba59015
 +		}
 +		mask |= 1u << id;
 +		/* IC units -> the presented 1125x2436 display (SweetHID.cpp on PANDORA). */
-+		uint64_t px = (uint64_t)xs[id] * 1220 / (pt.max_x + 1);
-+		uint64_t py = (uint64_t)ys[id] * 2656 / (pt.max_y + 1);
++		uint64_t px = (uint64_t)xs[id] * 1200 / (pt.max_x + 1);
++		uint64_t py = (uint64_t)ys[id] * 2608 / (pt.max_y + 1);
 +		int x, y;
 +		if (pt.fill) {
 +			x = (int)((uint64_t)xs[id] * 1125 / (pt.max_x + 1));
 +			y = (int)((uint64_t)ys[id] * 2436 / (pt.max_y + 1));
 +		} else {
-+			x = (int)px - (1220 - 1125) / 2;
-+			y = (int)py - (2656 - 2436) / 2;
++			x = (int)px - (1200 - 1125) / 2;
++			y = (int)py - (2608 - 2436) / 2;
 +		}
 +		pt.x[id] = x;
 +		pt.y[id] = y;

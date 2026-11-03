@@ -2,7 +2,7 @@
 
 在小米 17 Pro（代号 pandora，骁龙 8 Elite Gen 5，SM8850）上直接跑 iPhone X 的 iOS 16.7.16。内核是自己编译的苹果开源内核 xnu-8796，这台手机的硬件驱动以补丁的形式编进内核。项目以前叫 `ios-pandora`。
 
-> Runs iPhone X's iOS 16.7.16 directly on the Xiaomi 17 Pro (pandora, SM8850) with a self-built xnu-8796 kernel. Experimental; the documentation is in Chinese. Formerly `ios-pandora`.
+> Runs iPhone X's iOS 16.7.16 directly on the Xiaomi 17 Pro Max (popsicle, SM8850) with a self-built xnu-8796 kernel. Experimental; the documentation is in Chinese. Formerly `ios-pandora`.
 
 项目还在实验阶段，不适合日常使用。仓库里是内核补丁、驱动源码和工具，iOS 系统和手机固件用的是你自己的 IPSW 和手机。
 

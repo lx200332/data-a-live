@@ -14,7 +14,7 @@ new='''#if !defined(PANDORA)
     fuxi_intf1 = (volatile uint32_t *)ml_io_map(0x0ae36000, 0x1000);
 #endif
     /* PANDORA: SM8550 MDP addresses do not exist here (SM8850 MDP is at 0x9800000) and
-     * the 17 Pro panel refreshes by itself (measured by shim/hello), so no kick:
+     * the 17 Pro Max panel refreshes by itself (measured by shim/hello), so no kick:
      * fuxi_display_kick() returns early while fuxi_intf1 is NULL. */
 '''
 t=t.replace(old,new); open(p,'w').write(t)

@@ -1283,7 +1283,7 @@ tc_bits(const uint8_t *r, unsigned n, unsigned off, unsigned bits)
 	return out;
 }
 
-/* Fingers in panel pixels (1220 x 2656) -> SweetHIDTouch, which on PANDORA takes the
+/* Fingers in panel pixels (1200 x 2608) -> SweetHIDTouch, which on PANDORA takes the
  * presented 1125 x 2436 display's pixels (stretched with sweetfb_fill=1, else centred). */
 static void
 pt_deliver(uint32_t mask, const int *px, const int *py)
@@ -1297,11 +1297,11 @@ pt_deliver(uint32_t mask, const int *px, const int *py)
 		}
 		int x, y;
 		if (pt.fill) {
-			x = px[id] * 1125 / 1220;
-			y = py[id] * 2436 / 2656;
+			x = px[id] * 1125 / 1200;
+			y = py[id] * 2436 / 2608;
 		} else {
-			x = px[id] - (1220 - 1125) / 2;
-			y = py[id] - (2656 - 2436) / 2;
+			x = px[id] - (1200 - 1125) / 2;
+			y = py[id] - (2608 - 2436) / 2;
 		}
 		pt.px[id] = px[id];
 		pt.py[id] = py[id];
@@ -1405,9 +1405,9 @@ done:
 			continue;
 		}
 		mask |= 1u << id;
-		/* IC units (0..max) -> panel pixels, 1220 x 2656 */
-		px[id] = (int)((uint64_t)xs[id] * 1220 / (pt.max_x + 1));
-		py[id] = (int)((uint64_t)ys[id] * 2656 / (pt.max_y + 1));
+		/* IC units (0..max) -> panel pixels, 1200 x 2608 */
+		px[id] = (int)((uint64_t)xs[id] * 1200 / (pt.max_x + 1));
+		py[id] = (int)((uint64_t)ys[id] * 2608 / (pt.max_y + 1));
 	}
 	if (mask) {
 		pt.last_ic_touch = mach_absolute_time();
@@ -1474,8 +1474,8 @@ tc_thp_frame(const uint8_t *f, unsigned n)
 			if (pt.thp_flip & 2u) {
 				yc = (long)yn * 16 - yc;
 			}
-			fx[found] = (int)(xc * 1220 / ((long)xn * 16));
-			fy[found] = (int)(yc * 2656 / ((long)yn * 16));
+			fx[found] = (int)(xc * 1200 / ((long)xn * 16));
+			fy[found] = (int)(yc * 2608 / ((long)yn * 16));
 			fv[found] = v;
 			if (pt.thp_logs < 40) {
 				printf("PANDORA TOUCH: THP peak cell %u,%u value %d -> panel %d,%d\n", r, c, v,

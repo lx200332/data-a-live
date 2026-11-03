@@ -170,7 +170,7 @@
 
 ## 第 1 步结果（2026-10-22，shim/hello，fastboot boot 成功）
 - EL1；ABL 把程序放在 0xC7800000；设备树在 0xD5C80000。
-- 屏幕：0xFC800000，1220×2656，每行 4880 字节，ARGB8888；直接写缓冲区就会显示（自动刷新开着），不用手动触发。
+- 屏幕：0xFC800000，1200×2608，每行 4800 字节，ARGB8888；直接写缓冲区就会显示（自动刷新开着），不用手动触发。
 - 10 个 SSPP 按设备树偏移读出的地址全是 0：寄存器排布和推算的不同，待查（不影响显示）。
 - **CPU 不支持 16K 页**（MMFR0 TGran16 = 0；UniXNU 作者也确认）。决定改走 4K 页：iOS 16 那一代内核（xnu-8796）用 BCM2837 的 4K 配置为底，加 ios-sweet/ios-fuxi 驱动补丁，移植 UniXNU 的 3 个 4K 补丁（native-4k-bootstrap-capacity / native-4k-user-abi / native-4k-signature-hash-cache，约 400 行）。
 
@@ -201,7 +201,7 @@
 - `fastboot boot shim/loader/out/loader-boot.img` 一次成功，不写任何分区。
 - 苹果内核在骁龙 8 Elite Gen 5（Oryon 核心）上单核运行：
   - 内存 5 GB 识别正常；中断控制器正常（SGI1 OK）；计时器中断正常（等时钟芯片的 30 秒超时后继续走）。
-  - 屏幕驱动认出 1220×2656、地址 0xfc800000。
+  - 屏幕驱动认出 1200×2608、地址 0xfc800000。
 - 内存盘挂成根目录，**测试程序作为 PID 1 在用户态运行**，每 5 秒心跳，持续稳定（照片里约 2 分钟的心跳）。
 - 第 3 步的前三个节点（内核日志上屏 → 单核运行 → PID 1）完成；剩下"8 个核心全开"。
 - 8 核（构建 #10，补丁 0113：核心上限 8；超大核编号 0x10000/0x10100 的第三段 Aff2 在唤醒、查核心号、找重分发器三处都保留）：
@@ -239,7 +239,7 @@
 ## 第 6 步：iOS 启动（2026-10-22，真机，tools/boot_ios.sh，rd=ufsroot0）
 - 只读启动：HFS+ 日志区要在第一次挂载时初始化（mkfs 只留了"待初始化"标记，Linux 不碰日志），只读模式写不了 → 挂载失败。加 ufsrw=1 后日志初始化成功，根卷挂上，launchd 作为 PID 1 运行。
 - launchd 加载 libSystem 失败：共享缓存签名是 16K 页（"disallowing unsupported code signature page shift: 14"），4K 内核不认 → 0124 打开 UniXNU 的 XNU_NATIVE_CS_HASH_CACHE（先按 16K 核对苹果原签名，再算 4K 校验值）。代价：每次开机要读一遍约 3.3 GB 共享缓存，有一段明显停顿。
-- 之后 launchd 拉起大量服务（xpcproxy、backboardd、medialibraryd、bluetoothd、fairplayd.H2…）；backboardd 一直找 AppleM2ScalerCSCDriver。原因：SweetFramebuffer 只在屏幕比 iPhone X 小时才报告 1125x2436，17 Pro 比它大 → 报告了 1220x2656。0125 改为报告 1125x2436；0126 新增 sweetfb_fill=1，用 CPU 最近邻放大铺满 1220x2656（不加则居中留黑边）。
+- 之后 launchd 拉起大量服务（xpcproxy、backboardd、medialibraryd、bluetoothd、fairplayd.H2…）；backboardd 一直找 AppleM2ScalerCSCDriver。原因：SweetFramebuffer 只在屏幕比 iPhone X 小时才报告 1125x2436，17 Pro 比它大 → 报告了 1200x2608。0125 改为报告 1125x2436；0126 新增 sweetfb_fill=1，用 CPU 最近邻放大铺满 1200x2608（不加则居中留黑边）。
 - 0123：pandora_initwait=N，launchd 退出时先停 N 秒再 panic，方便拍照。ci_fetch.sh 改为每 10 秒查一次、只下载内核。
 - **可写启动（ufsrw=1 rootrw=1 sweetfb_noconsole=1 sweetfb_fill=1，构建 #24）：进入苹果标志。** 日志区重放正常（上次写入的内容恢复）。
 - 苹果标志停留：sweetsample 采样 + ipsw dyld a2s（共享缓存 slide = 采样打印的 slide）符号化：SpringBoard 主线程 CCSModuleRepository → LSApplicationRecord 等 LaunchServices 数据库锁，t1 在 __LAUNCH_SERVICES_IS_RESEEDING_ITS_DATABASE_AND_MAY_BLOCK__ 同步等 lsd。即第一次开机 lsd 重建应用数据库，约 25 分钟以上（存储驱动慢）。sweetnoexec=bluetoothd,fairplayd.H2 压掉刷屏。
@@ -467,7 +467,7 @@
   4. 结束渲染 0.09 ms，提交 0.35 ms，导入外部内存 0.2–0.6 ms。
   另外：提交到完成平均 5.6 ms；每帧 CPU 拷屏平均 2.4 ms。
 - **显示控制器摸底（0215，只读，按主线 Linux 的 DPU 13 排布）**：
-  - 主屏：ctl0 → intf1（DSI0），vig0 和 vig1 各送 610 像素宽的半屏，都读 0xFC800000（行宽 4880），两个混合器、两个 DSC；
+  - 主屏：ctl0 → intf1（DSI0），vig0 和 vig1 各送 600 像素宽的半屏，都读 0xFC800000（行宽 4800），两个混合器、两个 DSC；
   - 背屏也亮着：ctl1 → intf2（DSI1），vig2 送 572×904，地址 0xFD45C600；
   - 命令模式 + 自动刷新（autorefresh 0x80000001），撕裂检查开着；主屏 100 ms 内 12 帧 = 120 Hz；
   - SMMU：显示流 0x800 进第 2 号上下文，翻译关着，直接读物理地址；主线 Linux 只写 32 位地址，所以直接显示要打开这个上下文的翻译、用自己的页表（切换前先把现在读的内存原样映射）。

@@ -8,7 +8,7 @@ python3 - <<'PY'
 p = 'bsd/dev/fuxi_keys.c'
 t = open(p).read()
 old = """#if defined(PANDORA)
-	/* Xiaomi 13 (SM8550) register addresses; the 17 Pro's differ. Off unless fuxikeys=1. */
+	/* Xiaomi 13 (SM8550) register addresses; the 17 Pro Max's differ. Off unless fuxikeys=1. */
 	int enabled = 0;
 #else"""
 new = """#if defined(PANDORA)

@@ -1,5 +1,5 @@
 /*
- * pandora-loader: act as iBoot for the PANDORA xnu on the Xiaomi 17 Pro (SM8850).
+ * pandora-loader: act as iBoot for the PANDORA xnu on the Xiaomi 17 Pro Max (SM8850).
  * Started by `fastboot boot`; writes nothing to storage.
  *
  * The payload (tools/mkpayload.py from ios-sweet: kernel segments with chained
@@ -7,7 +7,7 @@
  * Like ios-sweet's shim/loader.c: copy segments to phys_base + (vmaddr - virt_base),
  * place the ADT and boot_args behind the kernel, jump to the entry with the MMU and
  * caches off and x0 = boot_args (physical). Framebuffer values were measured on this
- * phone by shim/hello (0xfc800000, 1220x2656, stride 4880, ARGB8888, self-refreshing).
+ * phone by shim/hello (0xfc800000, 1200x2608, stride 4800, ARGB8888, self-refreshing).
  *
  * MMU is off: every access is Device memory (-mstrict-align, 8-byte copies).
  * Linked at 0 and loaded anywhere: no absolute pointers in data.
@@ -23,9 +23,9 @@ void fatal(void) __attribute__((noreturn));
 
 #define FB          0xfc800000ull
 #define FB_SIZE     0x2b00000ull
-#define FB_W        1220u
-#define FB_H        2656u
-#define FB_STRIDE   (1220u * 4)
+#define FB_W        1200u
+#define FB_H        2608u
+#define FB_STRIDE   (1200u * 4)
 /* Kernel RAM must stay inside the clean 0x8c0000000 + 13 GiB range (DT_FINDINGS.md). */
 #define RAM_LO      0x8c0000000ull
 #define RAM_HI      0xc00000000ull

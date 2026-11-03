@@ -1,5 +1,5 @@
 /*
- * pandora-hello: first program for the Xiaomi 17 Pro (pandora, SM8850).
+ * pandora-hello: first program for the Xiaomi 17 Pro Max (popsicle, SM8850).
  * Started by `fastboot boot`, writes nothing to storage. It finds the framebuffer ABL
  * left on screen, prints CPU facts (exception level, 16K page support, PAC, ...), the
  * display pipe registers and its own load address, counts down 120 s and resets the
@@ -141,7 +141,7 @@ static void find_framebuffer(void)
 	}
 	/* Default guess when no pipe scans out of the splash region. */
 	uint64_t base = SPLASH;
-	fb_w = 1220; fb_h = 2656; fb_stride = 1220 * 4;
+	fb_w = 1200; fb_h = 2608; fb_stride = 1200 * 4;
 	if (pick >= 0) {
 		uint32_t w = pipes[pick].size & 0xffff, h = pipes[pick].size >> 16;
 		uint32_t s = pipes[pick].stride & 0xffff;

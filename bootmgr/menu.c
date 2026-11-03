@@ -26,9 +26,9 @@ void jump_linux(uint64_t entry, uint64_t fdt) __attribute__((noreturn));
 uint32_t safe_rd32(uint64_t pa, uint32_t *faulted);
 
 #define FB          0xfc800000ull
-#define FB_W        1220u
-#define FB_H        2656u
-#define FB_STRIDE   (1220u * 4)
+#define FB_W        1200u
+#define FB_H        2608u
+#define FB_STRIDE   (1200u * 4)
 #define SZ_2M       0x200000ull
 #define SLOT_HDR    0x1000ull
 /* Volume up: TLMM GPIO 101, active low (xnu patches 0128/0130; 0x0f100000 + 0x1000 * n,

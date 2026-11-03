@@ -477,7 +477,7 @@
 +static int
 +wl_icc_vote(uint32_t peak, bool download)
 +{
-+	/* KIWI (0x1107), two paths / nine rows, kB/s: path1 PCIe->GEM,
++	/* PEACH (0x110e), two paths / nine rows, kB/s: path1 PCIe->GEM,
 +	 * path2 GEM->EBI. Optional experiment; CNSS2 does not automatically
 +	 * select a nonzero row during PBL download in the audited revision. */
 +	static const uint32_t cnss[][3] = {
@@ -999,7 +999,7 @@
 +wl_pre_bhi(void)
 +{
 +	if (!wl_pre) { return 0; }
-+	if (wl_probe_fired || fw_faults || wl_prd(WL_EPCFG) != 0x110717cb ||
++	if (wl_probe_fired || fw_faults || wl_prd(WL_EPCFG) != 0x110e17cb ||
 +	    ((wl5_report[16] >> 8) & 15) != 2 || (wl_prd(WL_EPCFG + 4) & 4) ||
 +	    wl_mrd(wl_bhi + 0x28) != 0) { return 1; }
 +	uint32_t v, cookie, cause;
@@ -1178,7 +1178,7 @@
 +	uint32_t len = wl_mrd(0), cfg = wl_mrd(0x10);
 +	if (r[67] == ~0u) { f |= WL_DIAG_STATUS_ONES; }
 +	if (len == ~0u || cfg == ~0u || r[64] == ~0u) { f |= WL_DIAG_BAR_LOST; }
-+	if (r[114] != 0x110717cb) { f |= WL_DIAG_CONFIG_LOST; }
++	if (r[114] != 0x110e17cb) { f |= WL_DIAG_CONFIG_LOST; }
 +	if (r[110] == ~0u || r[111] == ~0u || !(r[111] & 0x400) ||
 +	    r[112] == ~0u || !(r[112] & (1u << 29))) { f |= WL_DIAG_LINK_LOST; }
 +	if (r[73] == ~0u || !(r[73] & 2) || (r[115] & ~15u) != WL_BAR0 || r[116]) { f |= WL_DIAG_DECODE_CHANGED; }
@@ -1208,7 +1208,7 @@
 +	int retain = 0;
 +	(void)PE_parse_boot_argn("fuxiwlanaspm", &retain, sizeof(retain));
 +	if (wl_pre == 5 && (retain == 1 || fw_faults ||
-+	    wl_prd(WL_EPCFG) != 0x110717cb || (wl_prd(WL_EPCFG + 4) & 4))) { return 3; }
++	    wl_prd(WL_EPCFG) != 0x110e17cb || (wl_prd(WL_EPCFG + 4) & 4))) { return 3; }
 +	const uint64_t cfg[] = {WL_EPCFG, WL_DBI};
 +	for (unsigned i = 0; i < 2; i++) {
 +		uint32_t flags = 0;
@@ -2094,7 +2094,7 @@
 +		wl_fw_path = ((hw >> 8) & 15) == 2 ?
 +		    "/usr/local/share/fuxi/wlan/amss20.bin" : "/usr/local/share/fuxi/wlan/amss.bin";
 +		if (wl_fw) {
-+			if (wl_prd(WL_EPCFG) != 0x110717cb || ((hw >> 8) & 15) != 2) { return 0x6c; }
++			if (wl_prd(WL_EPCFG) != 0x110e17cb || ((hw >> 8) & 15) != 2) { return 0x6c; }
 +			wl_fw_path = "/usr/local/share/fuxi/wlan/stock-amss20.bin";
 +			printf("FUXI WLAN: M6m stock input selected major 2; no fallback or provenance claim\n");
 +		}
@@ -2674,7 +2674,7 @@
 + * 10  qcom_ep_reset_deassert: 100 ms, PERST# high, 1 ms.
 + * 11  qcom_pcie_2_3_2_ltssm_enable; dw_pcie_wait_for_link (DLLLA), 1 s bound.
 + * 12  dw_pcie_setup_rc bus numbers; dw_pcie_prog_outbound_atu CFG0 region 0;
-+ *     endpoint 01:00.0 dword 0 (expect 0x110717cb), CRS/all-ones retry 1 s.
++ *     endpoint 01:00.0 dword 0 (expect 0x110e17cb), CRS/all-ones retry 1 s.
 + * 13  Standard BAR sizing on the endpoint (all-ones write, read, restore);
 + *     the command register is untouched, so decode stays disabled.
 + */
@@ -2966,7 +2966,7 @@
 +  r[77] = wl_prd(0x60100008ull); r[78] = wl_prd(0x6010000cull);
 +  r[79] = wl_prd(0x6010002cull); r[80] = wl_prd(0x60100004ull);
 +  if (wl3_faults) return 2;
-+  return id == 0x110717cbu ? 0 : 3;
++  return id == 0x110e17cbu ? 0 : 3;
 + }
 + case 13: /* BAR sizing: r[81+b] original, r[87+b] all-ones readback */
 +  for (unsigned b = 0; b < 6; b++) {

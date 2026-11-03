@@ -1,0 +1,659 @@
+diff --git a/FUXI_NOTES.md b/FUXI_NOTES.md
+index 191438c..63760ec 100644
+--- a/FUXI_NOTES.md
++++ b/FUXI_NOTES.md
+@@ -29,7 +29,7 @@
+ 
+ ## 4. 屏幕
+ - 小米 13 是 1080×2400 的 DSC 命令模式屏。补丁 0087 的注释：ABL 交接时开着"按 TE 信号自动刷新"，每个 TE 信号自动发一帧；如果再手动触发一次刷新，DSC 数据流就会乱、画面花掉。所以只有自动刷新关着时才手动触发。
+-- 17 Pro 也是 DSC 命令模式（1220×2656），很可能一样，要实测。
++- 17 Pro Max 也是 DSC 命令模式（1200×2608），很可能一样，要实测。
+ 
+ ## 5. 存储
+ - 用的是 ios-sweet 的 UFS 驱动改的。启动时先检查 UFS 的供电和时钟状态，然后只关掉"总线自动省电"这一项（补丁 0084，寄存器地址是 SM8550 的，17 Pro 要查自己的）。
+diff --git a/PLAN.md b/PLAN.md
+index 9ca757b..9aeb52d 100644
+--- a/PLAN.md
++++ b/PLAN.md
+@@ -170,7 +170,7 @@
+ 
+ ## 第 1 步结果（2026-10-22，shim/hello，fastboot boot 成功）
+ - EL1；ABL 把程序放在 0xC7800000；设备树在 0xD5C80000。
+-- 屏幕：0xFC800000，1220×2656，每行 4880 字节，ARGB8888；直接写缓冲区就会显示（自动刷新开着），不用手动触发。
++- 屏幕：0xFC800000，1200×2608，每行 4800 字节，ARGB8888；直接写缓冲区就会显示（自动刷新开着），不用手动触发。
+ - 10 个 SSPP 按设备树偏移读出的地址全是 0：寄存器排布和推算的不同，待查（不影响显示）。
+ - **CPU 不支持 16K 页**（MMFR0 TGran16 = 0；UniXNU 作者也确认）。决定改走 4K 页：iOS 16 那一代内核（xnu-8796）用 BCM2837 的 4K 配置为底，加 ios-sweet/ios-fuxi 驱动补丁，移植 UniXNU 的 3 个 4K 补丁（native-4k-bootstrap-capacity / native-4k-user-abi / native-4k-signature-hash-cache，约 400 行）。
+ 
+@@ -201,7 +201,7 @@
+ - `fastboot boot shim/loader/out/loader-boot.img` 一次成功，不写任何分区。
+ - 苹果内核在骁龙 8 Elite Gen 5（Oryon 核心）上单核运行：
+   - 内存 5 GB 识别正常；中断控制器正常（SGI1 OK）；计时器中断正常（等时钟芯片的 30 秒超时后继续走）。
+-  - 屏幕驱动认出 1220×2656、地址 0xfc800000。
++  - 屏幕驱动认出 1200×2608、地址 0xfc800000。
+ - 内存盘挂成根目录，**测试程序作为 PID 1 在用户态运行**，每 5 秒心跳，持续稳定（照片里约 2 分钟的心跳）。
+ - 第 3 步的前三个节点（内核日志上屏 → 单核运行 → PID 1）完成；剩下"8 个核心全开"。
+ - 8 核（构建 #10，补丁 0113：核心上限 8；超大核编号 0x10000/0x10100 的第三段 Aff2 在唤醒、查核心号、找重分发器三处都保留）：
+@@ -239,7 +239,7 @@
+ ## 第 6 步：iOS 启动（2026-10-22，真机，tools/boot_ios.sh，rd=ufsroot0）
+ - 只读启动：HFS+ 日志区要在第一次挂载时初始化（mkfs 只留了"待初始化"标记，Linux 不碰日志），只读模式写不了 → 挂载失败。加 ufsrw=1 后日志初始化成功，根卷挂上，launchd 作为 PID 1 运行。
+ - launchd 加载 libSystem 失败：共享缓存签名是 16K 页（"disallowing unsupported code signature page shift: 14"），4K 内核不认 → 0124 打开 UniXNU 的 XNU_NATIVE_CS_HASH_CACHE（先按 16K 核对苹果原签名，再算 4K 校验值）。代价：每次开机要读一遍约 3.3 GB 共享缓存，有一段明显停顿。
+-- 之后 launchd 拉起大量服务（xpcproxy、backboardd、medialibraryd、bluetoothd、fairplayd.H2…）；backboardd 一直找 AppleM2ScalerCSCDriver。原因：SweetFramebuffer 只在屏幕比 iPhone X 小时才报告 1125x2436，17 Pro 比它大 → 报告了 1220x2656。0125 改为报告 1125x2436；0126 新增 sweetfb_fill=1，用 CPU 最近邻放大铺满 1220x2656（不加则居中留黑边）。
++- 之后 launchd 拉起大量服务（xpcproxy、backboardd、medialibraryd、bluetoothd、fairplayd.H2…）；backboardd 一直找 AppleM2ScalerCSCDriver。原因：SweetFramebuffer 只在屏幕比 iPhone X 小时才报告 1125x2436，17 Pro 比它大 → 报告了 1200x2608。0125 改为报告 1125x2436；0126 新增 sweetfb_fill=1，用 CPU 最近邻放大铺满 1200x2608（不加则居中留黑边）。
+ - 0123：pandora_initwait=N，launchd 退出时先停 N 秒再 panic，方便拍照。ci_fetch.sh 改为每 10 秒查一次、只下载内核。
+ - **可写启动（ufsrw=1 rootrw=1 sweetfb_noconsole=1 sweetfb_fill=1，构建 #24）：进入苹果标志。** 日志区重放正常（上次写入的内容恢复）。
+ - 苹果标志停留：sweetsample 采样 + ipsw dyld a2s（共享缓存 slide = 采样打印的 slide）符号化：SpringBoard 主线程 CCSModuleRepository → LSApplicationRecord 等 LaunchServices 数据库锁，t1 在 __LAUNCH_SERVICES_IS_RESEEDING_ITS_DATABASE_AND_MAY_BLOCK__ 同步等 lsd。即第一次开机 lsd 重建应用数据库，约 25 分钟以上（存储驱动慢）。sweetnoexec=bluetoothd,fairplayd.H2 压掉刷屏。
+@@ -467,7 +467,7 @@
+   4. 结束渲染 0.09 ms，提交 0.35 ms，导入外部内存 0.2–0.6 ms。
+   另外：提交到完成平均 5.6 ms；每帧 CPU 拷屏平均 2.4 ms。
+ - **显示控制器摸底（0215，只读，按主线 Linux 的 DPU 13 排布）**：
+-  - 主屏：ctl0 → intf1（DSI0），vig0 和 vig1 各送 610 像素宽的半屏，都读 0xFC800000（行宽 4880），两个混合器、两个 DSC；
++  - 主屏：ctl0 → intf1（DSI0），vig0 和 vig1 各送 600 像素宽的半屏，都读 0xFC800000（行宽 4800），两个混合器、两个 DSC；
+   - 背屏也亮着：ctl1 → intf2（DSI1），vig2 送 572×904，地址 0xFD45C600；
+   - 命令模式 + 自动刷新（autorefresh 0x80000001），撕裂检查开着；主屏 100 ms 内 12 帧 = 120 Hz；
+   - SMMU：显示流 0x800 进第 2 号上下文，翻译关着，直接读物理地址；主线 Linux 只写 32 位地址，所以直接显示要打开这个上下文的翻译、用自己的页表（切换前先把现在读的内存原样映射）。
+diff --git a/README.md b/README.md
+index 2d41937..495d32f 100644
+--- a/README.md
++++ b/README.md
+@@ -2,7 +2,7 @@
+ 
+ 在小米 17 Pro（代号 pandora，骁龙 8 Elite Gen 5，SM8850）上直接跑 iPhone X 的 iOS 16.7.16。内核是自己编译的苹果开源内核 xnu-8796，这台手机的硬件驱动以补丁的形式编进内核。项目以前叫 `ios-pandora`。
+ 
+-> Runs iPhone X's iOS 16.7.16 directly on the Xiaomi 17 Pro (pandora, SM8850) with a self-built xnu-8796 kernel. Experimental; the documentation is in Chinese. Formerly `ios-pandora`.
++> Runs iPhone X's iOS 16.7.16 directly on the Xiaomi 17 Pro Max (popsicle, SM8850) with a self-built xnu-8796 kernel. Experimental; the documentation is in Chinese. Formerly `ios-pandora`.
+ 
+ 项目还在实验阶段，不适合日常使用。仓库里是内核补丁、驱动源码和工具，iOS 系统和手机固件用的是你自己的 IPSW 和手机。
+ 
+diff --git a/bootmgr/menu.c b/bootmgr/menu.c
+index 5af97b5..1841437 100644
+--- a/bootmgr/menu.c
++++ b/bootmgr/menu.c
+@@ -26,9 +26,9 @@ void jump_linux(uint64_t entry, uint64_t fdt) __attribute__((noreturn));
+ uint32_t safe_rd32(uint64_t pa, uint32_t *faulted);
+ 
+ #define FB          0xfc800000ull
+-#define FB_W        1220u
+-#define FB_H        2656u
+-#define FB_STRIDE   (1220u * 4)
++#define FB_W        1200u
++#define FB_H        2608u
++#define FB_STRIDE   (1200u * 4)
+ #define SZ_2M       0x200000ull
+ #define SLOT_HDR    0x1000ull
+ /* Volume up: TLMM GPIO 101, active low (xnu patches 0128/0130; 0x0f100000 + 0x1000 * n,
+diff --git a/bootmgr/mkboot.py b/bootmgr/mkboot.py
+index 6fc5a9c..80c0da2 100644
+--- a/bootmgr/mkboot.py
++++ b/bootmgr/mkboot.py
+@@ -23,7 +23,7 @@ import sys
+ PAGE = 4096
+ SZ_2M = 0x200000
+ SLOT_ALIGN = 0x10000
+-SAVE_AREA = 0x100000      # menu.c BAND_BYTES (4880 * 96) rounded up
++SAVE_AREA = 0x100000      # menu.c BAND_BYTES (4800 * 96) rounded up
+ MAGIC = b'PNDBMCF2'
+ 
+ 
+diff --git a/docs/EXPERIENCE.md b/docs/EXPERIENCE.md
+index c8800e0..356901b 100644
+--- a/docs/EXPERIENCE.md
++++ b/docs/EXPERIENCE.md
+@@ -6,7 +6,7 @@
+ 
+ ## 1. 启动和内核
+ 
+-- 引导程序把 `fastboot boot` 的程序放在 0xC7800000，CPU 在 EL1，设备树在 0xD5C80000。屏幕缓冲在 0xFC800000，1220×2656，每行 4880 字节，ARGB8888，自动刷新开着，直接写就会显示。（PLAN"第 1 步结果"）
++- 引导程序把 `fastboot boot` 的程序放在 0xC7800000，CPU 在 EL1，设备树在 0xD5C80000。屏幕缓冲在 0xFC800000，1200×2608，每行 4800 字节，ARGB8888，自动刷新开着，直接写就会显示。（PLAN"第 1 步结果"）
+ - Oryon 核心不支持 16K 页（MMFR0 TGran16 = 0）。内核用 4K 页：xnu-8796 以 BCM2837 的 4K 配置为底，加 UniXNU 的 3 个 4K 补丁。（PLAN"第 1 步结果"，0103-0105）
+ - 苹果的共享缓存按 16K 页签名。4K 内核要先按 16K 核对原签名，再算 4K 的校验值（0124）。代价是每次开机要把约 3.3 GB 的共享缓存读一遍，换成 ARMv8 SHA 指令后约 9 秒（0211）。
+ - 两个超大核的 MPIDR 是 0x10000 和 0x10100。唤醒核、查核号、找 GIC 重分发器三处都要保留第三段 Aff2，否则只能起 6 个核（0113）。
+diff --git a/shim/hello/hello.c b/shim/hello/hello.c
+index 21acc90..6cdb392 100644
+--- a/shim/hello/hello.c
++++ b/shim/hello/hello.c
+@@ -1,5 +1,5 @@
+ /*
+- * pandora-hello: first program for the Xiaomi 17 Pro (pandora, SM8850).
++ * pandora-hello: first program for the Xiaomi 17 Pro Max (popsicle, SM8850).
+  * Started by `fastboot boot`, writes nothing to storage. It finds the framebuffer ABL
+  * left on screen, prints CPU facts (exception level, 16K page support, PAC, ...), the
+  * display pipe registers and its own load address, counts down 120 s and resets the
+@@ -141,7 +141,7 @@ static void find_framebuffer(void)
+ 	}
+ 	/* Default guess when no pipe scans out of the splash region. */
+ 	uint64_t base = SPLASH;
+-	fb_w = 1220; fb_h = 2656; fb_stride = 1220 * 4;
++	fb_w = 1200; fb_h = 2608; fb_stride = 1200 * 4;
+ 	if (pick >= 0) {
+ 		uint32_t w = pipes[pick].size & 0xffff, h = pipes[pick].size >> 16;
+ 		uint32_t s = pipes[pick].stride & 0xffff;
+diff --git a/shim/loader/loader.c b/shim/loader/loader.c
+index 1b2ee75..ab07a95 100644
+--- a/shim/loader/loader.c
++++ b/shim/loader/loader.c
+@@ -1,5 +1,5 @@
+ /*
+- * pandora-loader: act as iBoot for the PANDORA xnu on the Xiaomi 17 Pro (SM8850).
++ * pandora-loader: act as iBoot for the PANDORA xnu on the Xiaomi 17 Pro Max (SM8850).
+  * Started by `fastboot boot`; writes nothing to storage.
+  *
+  * The payload (tools/mkpayload.py from ios-sweet: kernel segments with chained
+@@ -7,7 +7,7 @@
+  * Like ios-sweet's shim/loader.c: copy segments to phys_base + (vmaddr - virt_base),
+  * place the ADT and boot_args behind the kernel, jump to the entry with the MMU and
+  * caches off and x0 = boot_args (physical). Framebuffer values were measured on this
+- * phone by shim/hello (0xfc800000, 1220x2656, stride 4880, ARGB8888, self-refreshing).
++ * phone by shim/hello (0xfc800000, 1200x2608, stride 4800, ARGB8888, self-refreshing).
+  *
+  * MMU is off: every access is Device memory (-mstrict-align, 8-byte copies).
+  * Linked at 0 and loaded anywhere: no absolute pointers in data.
+@@ -23,9 +23,9 @@ void fatal(void) __attribute__((noreturn));
+ 
+ #define FB          0xfc800000ull
+ #define FB_SIZE     0x2b00000ull
+-#define FB_W        1220u
+-#define FB_H        2656u
+-#define FB_STRIDE   (1220u * 4)
++#define FB_W        1200u
++#define FB_H        2608u
++#define FB_STRIDE   (1200u * 4)
+ /* Kernel RAM must stay inside the clean 0x8c0000000 + 13 GiB range (DT_FINDINGS.md). */
+ #define RAM_LO      0x8c0000000ull
+ #define RAM_HI      0xc00000000ull
+diff --git a/tools/mkadt_pandora.py b/tools/mkadt_pandora.py
+index 47f4f4e..209fe88 100644
+--- a/tools/mkadt_pandora.py
++++ b/tools/mkadt_pandora.py
+@@ -1,8 +1,8 @@
+ #!/usr/bin/env python3
+-"""Build the Apple Device Tree for the PANDORA xnu (Xiaomi 17 Pro, SM8850).
++"""Build the Apple Device Tree for the PANDORA xnu (Xiaomi 17 Pro Max, SM8850).
+ 
+ Derived from ios-sweet tools/mkadt.py (dipa-studio/ios-sweet 425b2510). Phone values come from
+-the 17 Pro's live FDT (device/DT_FINDINGS.md) and shim/hello measurements.
++the 17 Pro Max's live FDT (device/DT_FINDINGS.md) and shim/hello measurements.
+ Usage:  mkadt_pandora.py OUT.adt [--dump] [--qemu]
+   --qemu   QEMU virt twin: QEMU's GIC/timer, RAM at 0xb0000000 and ios-sweet's 1080x2400
+            framebuffer at 0x9c000000 so tools/qemu-sweet.py can decode the screen.
+@@ -53,7 +53,7 @@ DSP_SHM, DSP_SHM_SIZE = 0xb0000000, 0x100000
+ GICD, GICD_SIZE = 0x17000000, 0x10000
+ GICR, GICR_SIZE = 0x17080000, 0x200000   # 8 redistributors, stride 0x40000
+ FB, FB_SIZE = 0xfc800000, 0x2b00000      # splash_region; ARGB8888, measured by shim/hello
+-FB_W, FB_H, FB_STRIDE = 1220, 2656, 1220 * 4
++FB_W, FB_H, FB_STRIDE = 1200, 2608, 1200 * 4
+ QEMU_FB, QEMU_FB_SIZE = 0x9c000000, 0x1700000
+ QEMU_FB_W, QEMU_FB_H, QEMU_FB_STRIDE = 1080, 2400, 1080 * 4
+ PANDORA_ECID = 0x50414e444f524101  # 'PANDORA' + 1, synthetic
+diff --git a/tools/qemu_loader.py b/tools/qemu_loader.py
+index 74a64c7..3f9e655 100644
+--- a/tools/qemu_loader.py
++++ b/tools/qemu_loader.py
+@@ -8,12 +8,12 @@ QEMU starts the arm64 Image like ABL does (EL1, MMU off, x0 = dtb). virt RAM sta
+ kernel RAM (0x8c0000000 + 5 GiB) are plain memory. The phone's GIC/UART/etc. are not there:
+ this checks the loader and the kernel's early boot, not drivers.
+ 
+-Writes fb.png (1220x2656, what the phone would show), fb.txt (decoded fbcon text when
++Writes fb.png (1200x2608, what the phone would show), fb.txt (decoded fbcon text when
+ --kernel gives the unstripped kernel with _iso_font), regs.txt, qemu.log.
+ """
+ import argparse, json, os, socket, struct, subprocess, sys, time, zlib
+ 
+-FB_BASE, FB_W, FB_H = 0xfc800000, 1220, 2656
++FB_BASE, FB_W, FB_H = 0xfc800000, 1200, 2608
+ FB_STRIDE = FB_W * 4
+ RAM_TOP = 0xc00000000
+ 
+diff --git a/wsl/fix_0108.sh b/wsl/fix_0108.sh
+index 460e17c..b2df12a 100644
+--- a/wsl/fix_0108.sh
++++ b/wsl/fix_0108.sh
+@@ -14,7 +14,7 @@ new='''#if !defined(PANDORA)
+     fuxi_intf1 = (volatile uint32_t *)ml_io_map(0x0ae36000, 0x1000);
+ #endif
+     /* PANDORA: SM8550 MDP addresses do not exist here (SM8850 MDP is at 0x9800000) and
+-     * the 17 Pro panel refreshes by itself (measured by shim/hello), so no kick:
++     * the 17 Pro Max panel refreshes by itself (measured by shim/hello), so no kick:
+      * fuxi_display_kick() returns early while fuxi_intf1 is NULL. */
+ '''
+ t=t.replace(old,new); open(p,'w').write(t)
+diff --git a/wsl/fix_0111.sh b/wsl/fix_0111.sh
+index e4accf8..45a7dde 100644
+--- a/wsl/fix_0111.sh
++++ b/wsl/fix_0111.sh
+@@ -8,7 +8,7 @@ for p, arg, msg in [('bsd/dev/fuxi_touch.c', 'fuxitouch', None),
+     t = open(p).read()
+     old = "\tint enabled = 1;\n\tthread_t thread;\n"
+     new = ("#if defined(PANDORA)\n"
+-           "\t/* Xiaomi 13 (SM8550) register addresses; the 17 Pro's differ. Off unless %s=1. */\n"
++           "\t/* Xiaomi 13 (SM8550) register addresses; the 17 Pro Max's differ. Off unless %s=1. */\n"
+            "\tint enabled = 0;\n#else\n\tint enabled = 1;\n#endif\n\tthread_t thread;\n") % arg
+     assert t.count(old) == 1, p
+     t = t.replace(old, new)
+diff --git a/wsl/fix_0125.sh b/wsl/fix_0125.sh
+index b48dbc2..fce3c94 100644
+--- a/wsl/fix_0125.sh
++++ b/wsl/fix_0125.sh
+@@ -16,10 +16,10 @@ def sub(old, new, what):
+ sub("""	if (!native && fWidth <= SWEET_FB_LOGICAL_W && fHeight <= SWEET_FB_LOGICAL_H) {""",
+     """#if defined(PANDORA)
+ 	/*
+-	 * The 17 Pro panel (1220x2656) is larger than the iPhone X one. Presented at its
++	 * The 17 Pro Max panel (1200x2608) is larger than the iPhone X one. Presented at its
+ 	 * own size, backboardd/UIKit have no layout for it and backboardd loops looking
+-	 * for AppleM2ScalerCSCDriver. Present 1125x2436 and center it (47 px left/right,
+-	 * 110 px top/bottom black border); the offsets below are then negative.
++	 * for AppleM2ScalerCSCDriver. Present 1125x2436 and center it (37 px left/right,
++	 * 86 px top/bottom black border); the offsets below are then negative.
+ 	 */
+ 	if (!native) {
+ #else
+diff --git a/wsl/fix_0126.sh b/wsl/fix_0126.sh
+index b7a262e..fc715c7 100644
+--- a/wsl/fix_0126.sh
++++ b/wsl/fix_0126.sh
+@@ -28,8 +28,8 @@ sub("""	fOffX = (int32_t)(fLogicalW - fWidth) / 2;
+ #if defined(PANDORA)
+ 	/*
+ 	 * sweetfb_fill=1: instead of the centered 1125x2436 area with a black border,
+-	 * scale the presented display to the whole 1220x2656 panel (nearest neighbour,
+-	 * x 1.084 / y 1.090; the aspect ratios differ by 0.5 %).
++	 * scale the presented display to the whole 1200x2608 panel (nearest neighbour,
++	 * x 1.067 / y 1.071; the aspect ratios differ by 0.4 %).
+ 	 */
+ 	int fill = 0;
+ 	PE_parse_boot_argn("sweetfb_fill", &fill, sizeof(fill));
+diff --git a/wsl/fix_0132.sh b/wsl/fix_0132.sh
+index 43384ff..c4d4a4e 100644
+--- a/wsl/fix_0132.sh
++++ b/wsl/fix_0132.sh
+@@ -8,7 +8,7 @@ python3 - <<'PY'
+ p = 'bsd/dev/fuxi_keys.c'
+ t = open(p).read()
+ old = """#if defined(PANDORA)
+-	/* Xiaomi 13 (SM8550) register addresses; the 17 Pro's differ. Off unless fuxikeys=1. */
++	/* Xiaomi 13 (SM8550) register addresses; the 17 Pro Max's differ. Off unless fuxikeys=1. */
+ 	int enabled = 0;
+ #else"""
+ new = """#if defined(PANDORA)
+diff --git a/wsl/fix_0139.py b/wsl/fix_0139.py
+index 66d37c7..b6607c1 100644
+--- a/wsl/fix_0139.py
++++ b/wsl/fix_0139.py
+@@ -11,7 +11,7 @@ def sub(o, n):
+ dsi = r'''/*
+  * Panel brightness over DSI (0139). The main panel (DT "xiaomi q200 42 02 0a cmd mode dsc
+  * dsi panel") is on DSI0 (0x09ac0000) and takes DCS 0x51 with two bytes, high byte first
+- * (qcom,mdss-dsi-bl-inverted-dbv), 7..0x3fff, 0x1554 = top of the normal range (above it
++ * (qcom,mdss-dsi-bl-inverted-dbv), 7..0x3fff, 0x1fff = top of the normal range (above it
+  * is Xiaomi's high-brightness mode), HS mode. The command goes through the test-pattern
+  * FIFO, as dsi_ctrl_hw_cmn_kickoff_fifo_command / reset_cmd_fifo in the SM8850 msm_drm:
+  * TPG_CTRL 0x15c = 0x30006, words to 0x17c, COMMAND_MODE_DMA_CTRL 0x3c |= embedded mode,
+@@ -21,7 +21,7 @@ dsi = r'''/*
+ extern "C" vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ #define SWEET_DSI0_PA           0x09ac0000u
+ #define SWEET_PANEL_BL_MIN      7u
+-#define SWEET_PANEL_BL_MAX      0x1554u
++#define SWEET_PANEL_BL_MAX      0x1fffu
+ static vm_offset_t sweet_dsi;
+ static int sweet_dsi_bl = -1;           /* -1 unknown, 0 off/failed, 1 working */
+ static unsigned sweet_dsi_logs;
+diff --git a/wsl/pandora_config.sh b/wsl/pandora_config.sh
+index 8bd6bd4..a55eb9b 100644
+--- a/wsl/pandora_config.sh
++++ b/wsl/pandora_config.sh
+@@ -5,7 +5,7 @@ cd /opt/work/tree
+ git checkout -q -- . && git clean -qfd
+ sed -i 's/^SUPPORTED_ARM64_MACHINE_CONFIGS = \(.*\) FUXI$/SUPPORTED_ARM64_MACHINE_CONFIGS = \1 FUXI PANDORA/' makedefs/MakeInc.def
+ sed -i '/^MACHINE_FLAGS_ARM64_FUXI = /a \
+-# Xiaomi 17 Pro (pandora, SM8850): Fuxi providers with 4 KiB pages (no 16K granule on Oryon).\
++# Xiaomi 17 Pro Max (popsicle, SM8850): Fuxi providers with 4 KiB pages (no 16K granule on Oryon).\
+ MACHINE_FLAGS_ARM64_PANDORA = -DARM64_BOARD_CONFIG_SWEET -DFUXI=1 -DPANDORA=1 -march=armv8.2-a+crypto' makedefs/MakeInc.def
+ sed -i 's/\$(filter SWEET FUXI,\$(CURRENT_MACHINE_CONFIG))/$(filter SWEET FUXI PANDORA,$(CURRENT_MACHINE_CONFIG))/' makedefs/MakeInc.def libkern/conf/Makefile.template bsd/conf/Makefile.template
+ sed 's/^# fuxi (Xiaomi 13, SM8550), single-CPU RAM bring-up:/# pandora (Xiaomi 17 Pro, SM8850), 4 KiB pages, otherwise as fuxi:/' config/MASTER.arm64.fuxi > config/MASTER.arm64.pandora
+diff --git a/wsl/pandora_dpu.c b/wsl/pandora_dpu.c
+index 47a3343..16ab9bd 100644
+--- a/wsl/pandora_dpu.c
++++ b/wsl/pandora_dpu.c
+@@ -288,8 +288,8 @@ pandora_dpu_probe(uint64_t fb)
+  * into 16 MiB slots from 0x80000000. ACTLR is the DT's for SID 0x800 (qcom,actlr 0x1). Any fault in the bank in
+  * the first 100 ms turns translation off again (the ABL's state) and leaves the CPU copy.
+  *
+- * Pipes. Main screen: CTL0 -> INTF1 (DSI0), source split over LM0/LM1: VIG0 fills x 0-609 and VIG1 x 610-1219
+- * of the 1220x2656 panel. A frame is shown by giving both pipes the surface: source rectangles, stride and
++ * Pipes. Main screen: CTL0 -> INTF1 (DSI0), source split over LM0/LM1: VIG0 fills x 0-599 and VIG1 x 600-1199
++ * of the 1200x2608 panel. A frame is shown by giving both pipes the surface: source rectangles, stride and
+  * address in their REC0 blocks, and with sweetfb_fill the QSEED3 scaler (bilinear, no LUT, phase step
+  * src/dst in 21-bit fixed point, QSEED4 preload 4/2), all as mainline dpu_hw_sspp_v13.c / dpu_plane.c program
+  * them, then CTL0 FLUSH (VIG0 bit 0, VIG1 bit 1, CTL bit 17). Command mode with autorefresh latches the
+@@ -320,9 +320,9 @@ extern bool pandora_log_sync(void);                          /* bsd/dev/sweet_uf
+ #define SC_SLOTS          16u
+ #define SC_PIPES          2u                 /* VIG0, VIG1 */
+ #define SC_FLUSH          ((1u << 0) | (1u << 1) | (1u << 17))
+-#define SC_PANEL_W        1220u
+-#define SC_HALF_W         610u
+-#define SC_PANEL_H        2656u
++#define SC_PANEL_W        1200u
++#define SC_HALF_W         600u
++#define SC_PANEL_H        2608u
+ /* REC block registers (dpu_hw_sspp_v13.c) */
+ #define SC_OP_MODE        0x08u
+ #define SC_SRC_SIZE       0x14u
+@@ -652,8 +652,8 @@ pandora_scanout_show(uint32_t addr, uint32_t stride, uint32_t w, uint32_t h, boo
+ 	if (!sc.ready || w < 2 || h == 0 || w > SC_PANEL_W || h > SC_PANEL_H || !sc_flush_idle()) {
+ 		return false;
+ 	}
+-	/* Both modes split at the mixers' boundary (panel x 610), as the ABL's setup does: scaled, the source splits
+-	 * at its middle (mainline splits a plane the same way); centred, at the column that lands on x 610. */
++	/* Both modes split at the mixers' boundary (panel x 600), as the ABL's setup does: scaled, the source splits
++	 * at its middle (mainline splits a plane the same way); centred, at the column that lands on x 600. */
+ 	const uint32_t left = fill ? 0 : (SC_PANEL_W - w) / 2;
+ 	const uint32_t half = fill ? w / 2 : SC_HALF_W - left;
+ 	for (unsigned p = 0; p < SC_PIPES; p++) {
+diff --git a/wsl/pandora_touch.c b/wsl/pandora_touch.c
+index 8788a59..9dc2b9a 100644
+--- a/wsl/pandora_touch.c
++++ b/wsl/pandora_touch.c
+@@ -1283,7 +1283,7 @@ tc_bits(const uint8_t *r, unsigned n, unsigned off, unsigned bits)
+ 	return out;
+ }
+ 
+-/* Fingers in panel pixels (1220 x 2656) -> SweetHIDTouch, which on PANDORA takes the
++/* Fingers in panel pixels (1200 x 2608) -> SweetHIDTouch, which on PANDORA takes the
+  * presented 1125 x 2436 display's pixels (stretched with sweetfb_fill=1, else centred). */
+ static void
+ pt_deliver(uint32_t mask, const int *px, const int *py)
+@@ -1297,11 +1297,11 @@ pt_deliver(uint32_t mask, const int *px, const int *py)
+ 		}
+ 		int x, y;
+ 		if (pt.fill) {
+-			x = px[id] * 1125 / 1220;
+-			y = py[id] * 2436 / 2656;
++			x = px[id] * 1125 / 1200;
++			y = py[id] * 2436 / 2608;
+ 		} else {
+-			x = px[id] - (1220 - 1125) / 2;
+-			y = py[id] - (2656 - 2436) / 2;
++			x = px[id] - (1200 - 1125) / 2;
++			y = py[id] - (2608 - 2436) / 2;
+ 		}
+ 		pt.px[id] = px[id];
+ 		pt.py[id] = py[id];
+@@ -1405,9 +1405,9 @@ done:
+ 			continue;
+ 		}
+ 		mask |= 1u << id;
+-		/* IC units (0..max) -> panel pixels, 1220 x 2656 */
+-		px[id] = (int)((uint64_t)xs[id] * 1220 / (pt.max_x + 1));
+-		py[id] = (int)((uint64_t)ys[id] * 2656 / (pt.max_y + 1));
++		/* IC units (0..max) -> panel pixels, 1200 x 2608 */
++		px[id] = (int)((uint64_t)xs[id] * 1200 / (pt.max_x + 1));
++		py[id] = (int)((uint64_t)ys[id] * 2608 / (pt.max_y + 1));
+ 	}
+ 	if (mask) {
+ 		pt.last_ic_touch = mach_absolute_time();
+@@ -1474,8 +1474,8 @@ tc_thp_frame(const uint8_t *f, unsigned n)
+ 			if (pt.thp_flip & 2u) {
+ 				yc = (long)yn * 16 - yc;
+ 			}
+-			fx[found] = (int)(xc * 1220 / ((long)xn * 16));
+-			fy[found] = (int)(yc * 2656 / ((long)yn * 16));
++			fx[found] = (int)(xc * 1200 / ((long)xn * 16));
++			fy[found] = (int)(yc * 2608 / ((long)yn * 16));
+ 			fv[found] = v;
+ 			if (pt.thp_logs < 40) {
+ 				printf("PANDORA TOUCH: THP peak cell %u,%u value %d -> panel %d,%d\n", r, c, v,
+diff --git a/xnu/patches/0099-fuxi-wlan.patch b/xnu/patches/0099-fuxi-wlan.patch
+index c58973a..268a1ac 100644
+--- a/xnu/patches/0099-fuxi-wlan.patch
++++ b/xnu/patches/0099-fuxi-wlan.patch
+@@ -477,7 +477,7 @@
+ +static int
+ +wl_icc_vote(uint32_t peak, bool download)
+ +{
+-+	/* KIWI (0x1107), two paths / nine rows, kB/s: path1 PCIe->GEM,
+++	/* PEACH (0x110e), two paths / nine rows, kB/s: path1 PCIe->GEM,
+ +	 * path2 GEM->EBI. Optional experiment; CNSS2 does not automatically
+ +	 * select a nonzero row during PBL download in the audited revision. */
+ +	static const uint32_t cnss[][3] = {
+@@ -999,7 +999,7 @@
+ +wl_pre_bhi(void)
+ +{
+ +	if (!wl_pre) { return 0; }
+-+	if (wl_probe_fired || fw_faults || wl_prd(WL_EPCFG) != 0x110717cb ||
+++	if (wl_probe_fired || fw_faults || wl_prd(WL_EPCFG) != 0x110e17cb ||
+ +	    ((wl5_report[16] >> 8) & 15) != 2 || (wl_prd(WL_EPCFG + 4) & 4) ||
+ +	    wl_mrd(wl_bhi + 0x28) != 0) { return 1; }
+ +	uint32_t v, cookie, cause;
+@@ -1178,7 +1178,7 @@
+ +	uint32_t len = wl_mrd(0), cfg = wl_mrd(0x10);
+ +	if (r[67] == ~0u) { f |= WL_DIAG_STATUS_ONES; }
+ +	if (len == ~0u || cfg == ~0u || r[64] == ~0u) { f |= WL_DIAG_BAR_LOST; }
+-+	if (r[114] != 0x110717cb) { f |= WL_DIAG_CONFIG_LOST; }
+++	if (r[114] != 0x110e17cb) { f |= WL_DIAG_CONFIG_LOST; }
+ +	if (r[110] == ~0u || r[111] == ~0u || !(r[111] & 0x400) ||
+ +	    r[112] == ~0u || !(r[112] & (1u << 29))) { f |= WL_DIAG_LINK_LOST; }
+ +	if (r[73] == ~0u || !(r[73] & 2) || (r[115] & ~15u) != WL_BAR0 || r[116]) { f |= WL_DIAG_DECODE_CHANGED; }
+@@ -1208,7 +1208,7 @@
+ +	int retain = 0;
+ +	(void)PE_parse_boot_argn("fuxiwlanaspm", &retain, sizeof(retain));
+ +	if (wl_pre == 5 && (retain == 1 || fw_faults ||
+-+	    wl_prd(WL_EPCFG) != 0x110717cb || (wl_prd(WL_EPCFG + 4) & 4))) { return 3; }
+++	    wl_prd(WL_EPCFG) != 0x110e17cb || (wl_prd(WL_EPCFG + 4) & 4))) { return 3; }
+ +	const uint64_t cfg[] = {WL_EPCFG, WL_DBI};
+ +	for (unsigned i = 0; i < 2; i++) {
+ +		uint32_t flags = 0;
+@@ -2094,7 +2094,7 @@
+ +		wl_fw_path = ((hw >> 8) & 15) == 2 ?
+ +		    "/usr/local/share/fuxi/wlan/amss20.bin" : "/usr/local/share/fuxi/wlan/amss.bin";
+ +		if (wl_fw) {
+-+			if (wl_prd(WL_EPCFG) != 0x110717cb || ((hw >> 8) & 15) != 2) { return 0x6c; }
+++			if (wl_prd(WL_EPCFG) != 0x110e17cb || ((hw >> 8) & 15) != 2) { return 0x6c; }
+ +			wl_fw_path = "/usr/local/share/fuxi/wlan/stock-amss20.bin";
+ +			printf("FUXI WLAN: M6m stock input selected major 2; no fallback or provenance claim\n");
+ +		}
+@@ -2674,7 +2674,7 @@
+ + * 10  qcom_ep_reset_deassert: 100 ms, PERST# high, 1 ms.
+ + * 11  qcom_pcie_2_3_2_ltssm_enable; dw_pcie_wait_for_link (DLLLA), 1 s bound.
+ + * 12  dw_pcie_setup_rc bus numbers; dw_pcie_prog_outbound_atu CFG0 region 0;
+-+ *     endpoint 01:00.0 dword 0 (expect 0x110717cb), CRS/all-ones retry 1 s.
+++ *     endpoint 01:00.0 dword 0 (expect 0x110e17cb), CRS/all-ones retry 1 s.
+ + * 13  Standard BAR sizing on the endpoint (all-ones write, read, restore);
+ + *     the command register is untouched, so decode stays disabled.
+ + */
+@@ -2966,7 +2966,7 @@
+ +  r[77] = wl_prd(0x60100008ull); r[78] = wl_prd(0x6010000cull);
+ +  r[79] = wl_prd(0x6010002cull); r[80] = wl_prd(0x60100004ull);
+ +  if (wl3_faults) return 2;
+-+  return id == 0x110717cbu ? 0 : 3;
+++  return id == 0x110e17cbu ? 0 : 3;
+ + }
+ + case 13: /* BAR sizing: r[81+b] original, r[87+b] all-ones readback */
+ +  for (unsigned b = 0; b < 6; b++) {
+diff --git a/xnu/patches/0125-pandora-present-iphone-x-centered.patch b/xnu/patches/0125-pandora-present-iphone-x-centered.patch
+index 74dce12..ae1a67d 100644
+--- a/xnu/patches/0125-pandora-present-iphone-x-centered.patch
++++ b/xnu/patches/0125-pandora-present-iphone-x-centered.patch
+@@ -8,10 +8,10 @@ index e0e0baf..085293c 100644
+  	fLogicalH = fHeight;
+ +#if defined(PANDORA)
+ +	/*
+-+	 * The 17 Pro panel (1220x2656) is larger than the iPhone X one. Presented at its
+++	 * The 17 Pro Max panel (1200x2608) is larger than the iPhone X one. Presented at its
+ +	 * own size, backboardd/UIKit have no layout for it and backboardd loops looking
+-+	 * for AppleM2ScalerCSCDriver. Present 1125x2436 and center it (47 px left/right,
+-+	 * 110 px top/bottom black border); the offsets below are then negative.
+++	 * for AppleM2ScalerCSCDriver. Present 1125x2436 and center it (37 px left/right,
+++	 * 86 px top/bottom black border); the offsets below are then negative.
+ +	 */
+ +	if (!native) {
+ +#else
+diff --git a/xnu/patches/0126-pandora-sweetfb-fill-scaling.patch b/xnu/patches/0126-pandora-sweetfb-fill-scaling.patch
+index f2f1d2e..bdb82af 100644
+--- a/xnu/patches/0126-pandora-sweetfb-fill-scaling.patch
++++ b/xnu/patches/0126-pandora-sweetfb-fill-scaling.patch
+@@ -20,8 +20,8 @@ index 085293c..d82f1b2 100644
+ +#if defined(PANDORA)
+ +	/*
+ +	 * sweetfb_fill=1: instead of the centered 1125x2436 area with a black border,
+-+	 * scale the presented display to the whole 1220x2656 panel (nearest neighbour,
+-+	 * x 1.084 / y 1.090; the aspect ratios differ by 0.5 %).
+++	 * scale the presented display to the whole 1200x2608 panel (nearest neighbour,
+++	 * x 1.067 / y 1.071; the aspect ratios differ by 0.4 %).
+ +	 */
+ +	int fill = 0;
+ +	PE_parse_boot_argn("sweetfb_fill", &fill, sizeof(fill));
+diff --git a/xnu/patches/0130-pandora-volup-tlmm-and-touch.patch b/xnu/patches/0130-pandora-volup-tlmm-and-touch.patch
+index 402a4c6..82e0015 100644
+--- a/xnu/patches/0130-pandora-volup-tlmm-and-touch.patch
++++ b/xnu/patches/0130-pandora-volup-tlmm-and-touch.patch
+@@ -1204,15 +1204,15 @@ index 0000000..ba59015
+ +		}
+ +		mask |= 1u << id;
+ +		/* IC units -> the presented 1125x2436 display (SweetHID.cpp on PANDORA). */
+-+		uint64_t px = (uint64_t)xs[id] * 1220 / (pt.max_x + 1);
+-+		uint64_t py = (uint64_t)ys[id] * 2656 / (pt.max_y + 1);
+++		uint64_t px = (uint64_t)xs[id] * 1200 / (pt.max_x + 1);
+++		uint64_t py = (uint64_t)ys[id] * 2608 / (pt.max_y + 1);
+ +		int x, y;
+ +		if (pt.fill) {
+ +			x = (int)((uint64_t)xs[id] * 1125 / (pt.max_x + 1));
+ +			y = (int)((uint64_t)ys[id] * 2436 / (pt.max_y + 1));
+ +		} else {
+-+			x = (int)px - (1220 - 1125) / 2;
+-+			y = (int)py - (2656 - 2436) / 2;
+++			x = (int)px - (1200 - 1125) / 2;
+++			y = (int)py - (2608 - 2436) / 2;
+ +		}
+ +		pt.x[id] = x;
+ +		pt.y[id] = y;
+diff --git a/xnu/patches/0134-pandora-touch-thp-fallback.patch b/xnu/patches/0134-pandora-touch-thp-fallback.patch
+index caaedd9..174dc28 100644
+--- a/xnu/patches/0134-pandora-touch-thp-fallback.patch
++++ b/xnu/patches/0134-pandora-touch-thp-fallback.patch
+@@ -89,7 +89,7 @@ index b7cee69..3eb7f58 100644
+  	return out;
+  }
+  
+-+/* Fingers in panel pixels (1220 x 2656) -> SweetHIDTouch, which on PANDORA takes the
+++/* Fingers in panel pixels (1200 x 2608) -> SweetHIDTouch, which on PANDORA takes the
+ + * presented 1125 x 2436 display's pixels (stretched with sweetfb_fill=1, else centred). */
+ +static void
+ +pt_deliver(uint32_t mask, const int *px, const int *py)
+@@ -103,11 +103,11 @@ index b7cee69..3eb7f58 100644
+ +		}
+ +		int x, y;
+ +		if (pt.fill) {
+-+			x = px[id] * 1125 / 1220;
+-+			y = py[id] * 2436 / 2656;
+++			x = px[id] * 1125 / 1200;
+++			y = py[id] * 2436 / 2608;
+ +		} else {
+-+			x = px[id] - (1220 - 1125) / 2;
+-+			y = py[id] - (2656 - 2436) / 2;
+++			x = px[id] - (1200 - 1125) / 2;
+++			y = py[id] - (2608 - 2436) / 2;
+ +		}
+ +		pt.px[id] = px[id];
+ +		pt.py[id] = py[id];
+@@ -143,22 +143,22 @@ index b7cee69..3eb7f58 100644
+  		}
+  		mask |= 1u << id;
+ -		/* IC units -> the presented 1125x2436 display (SweetHID.cpp on PANDORA). */
+--		uint64_t px = (uint64_t)xs[id] * 1220 / (pt.max_x + 1);
+--		uint64_t py = (uint64_t)ys[id] * 2656 / (pt.max_y + 1);
++-		uint64_t px = (uint64_t)xs[id] * 1200 / (pt.max_x + 1);
++-		uint64_t py = (uint64_t)ys[id] * 2608 / (pt.max_y + 1);
+ -		int x, y;
+ -		if (pt.fill) {
+ -			x = (int)((uint64_t)xs[id] * 1125 / (pt.max_x + 1));
+ -			y = (int)((uint64_t)ys[id] * 2436 / (pt.max_y + 1));
+ -		} else {
+--			x = (int)px - (1220 - 1125) / 2;
+--			y = (int)py - (2656 - 2436) / 2;
++-			x = (int)px - (1200 - 1125) / 2;
++-			y = (int)py - (2608 - 2436) / 2;
+ -		}
+ -		pt.x[id] = x;
+ -		pt.y[id] = y;
+ -		sweet_hid_touch((int)id, 1, x, y);
+-+		/* IC units (0..max) -> panel pixels, 1220 x 2656 */
+-+		px[id] = (int)((uint64_t)xs[id] * 1220 / (pt.max_x + 1));
+-+		py[id] = (int)((uint64_t)ys[id] * 2656 / (pt.max_y + 1));
+++		/* IC units (0..max) -> panel pixels, 1200 x 2608 */
+++		px[id] = (int)((uint64_t)xs[id] * 1200 / (pt.max_x + 1));
+++		py[id] = (int)((uint64_t)ys[id] * 2608 / (pt.max_y + 1));
+  	}
+ -	for (unsigned id = 0; id < PT_MAX; id++) {
+ -		if ((pt.active & (1u << id)) && !(mask & (1u << id))) {
+@@ -230,8 +230,8 @@ index b7cee69..3eb7f58 100644
+ +			if (pt.thp_flip & 2u) {
+ +				yc = (long)yn * 16 - yc;
+ +			}
+-+			fx[found] = (int)(xc * 1220 / ((long)xn * 16));
+-+			fy[found] = (int)(yc * 2656 / ((long)yn * 16));
+++			fx[found] = (int)(xc * 1200 / ((long)xn * 16));
+++			fy[found] = (int)(yc * 2608 / ((long)yn * 16));
+ +			fv[found] = v;
+ +			if (pt.thp_logs < 40) {
+ +				printf("PANDORA TOUCH: THP peak cell %u,%u value %d -> panel %d,%d\n", r, c, v,
+diff --git a/xnu/patches/0139-pandora-dsi-brightness.patch b/xnu/patches/0139-pandora-dsi-brightness.patch
+index 9d6d391..6758cd7 100644
+--- a/xnu/patches/0139-pandora-dsi-brightness.patch
++++ b/xnu/patches/0139-pandora-dsi-brightness.patch
+@@ -9,7 +9,7 @@ index 11f9b01..de4fa33 100644
+ +/*
+ + * Panel brightness over DSI (0139). The main panel (DT "xiaomi q200 42 02 0a cmd mode dsc
+ + * dsi panel") is on DSI0 (0x09ac0000) and takes DCS 0x51 with two bytes, high byte first
+-+ * (qcom,mdss-dsi-bl-inverted-dbv), 7..0x3fff, 0x1554 = top of the normal range (above it
+++ * (qcom,mdss-dsi-bl-inverted-dbv), 7..0x3fff, 0x1fff = top of the normal range (above it
+ + * is Xiaomi's high-brightness mode), HS mode. The command goes through the test-pattern
+ + * FIFO, as dsi_ctrl_hw_cmn_kickoff_fifo_command / reset_cmd_fifo in the SM8850 msm_drm:
+ + * TPG_CTRL 0x15c = 0x30006, words to 0x17c, COMMAND_MODE_DMA_CTRL 0x3c |= embedded mode,
+@@ -19,7 +19,7 @@ index 11f9b01..de4fa33 100644
+ +extern "C" vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ +#define SWEET_DSI0_PA           0x09ac0000u
+ +#define SWEET_PANEL_BL_MIN      7u
+-+#define SWEET_PANEL_BL_MAX      0x1554u
+++#define SWEET_PANEL_BL_MAX      0x1fffu
+ +static vm_offset_t sweet_dsi;
+ +static int sweet_dsi_bl = -1;           /* -1 unknown, 0 off/failed, 1 working */
+ +static unsigned sweet_dsi_logs;
+diff --git a/xnu/patches/0217-pandora-scanout.patch b/xnu/patches/0217-pandora-scanout.patch
+index fe89888..debbdb4 100644
+--- a/xnu/patches/0217-pandora-scanout.patch
++++ b/xnu/patches/0217-pandora-scanout.patch
+@@ -74,8 +74,8 @@ index 24d842f..1731726 100644
+ + * into 16 MiB slots from 0x80000000. ACTLR is the DT's for SID 0x800 (qcom,actlr 0x1). Any fault in the bank in
+ + * the first 100 ms turns translation off again (the ABL's state) and leaves the CPU copy.
+ + *
+-+ * Pipes. Main screen: CTL0 -> INTF1 (DSI0), source split over LM0/LM1: VIG0 fills x 0-609 and VIG1 x 610-1219
+-+ * of the 1220x2656 panel. A frame is shown by giving both pipes the surface: source rectangles, stride and
+++ * Pipes. Main screen: CTL0 -> INTF1 (DSI0), source split over LM0/LM1: VIG0 fills x 0-599 and VIG1 x 600-1199
+++ * of the 1200x2608 panel. A frame is shown by giving both pipes the surface: source rectangles, stride and
+ + * address in their REC0 blocks, and with sweetfb_fill the QSEED3 scaler (bilinear, no LUT, phase step
+ + * src/dst in 21-bit fixed point, QSEED4 preload 4/2), all as mainline dpu_hw_sspp_v13.c / dpu_plane.c program
+ + * them, then CTL0 FLUSH (VIG0 bit 0, VIG1 bit 1, CTL bit 17). Command mode with autorefresh latches the
+@@ -106,9 +106,9 @@ index 24d842f..1731726 100644
+ +#define SC_SLOTS          16u
+ +#define SC_PIPES          2u                 /* VIG0, VIG1 */
+ +#define SC_FLUSH          ((1u << 0) | (1u << 1) | (1u << 17))
+-+#define SC_PANEL_W        1220u
+-+#define SC_HALF_W         610u
+-+#define SC_PANEL_H        2656u
+++#define SC_PANEL_W        1200u
+++#define SC_HALF_W         600u
+++#define SC_PANEL_H        2608u
+ +/* REC block registers (dpu_hw_sspp_v13.c) */
+ +#define SC_OP_MODE        0x08u
+ +#define SC_SRC_SIZE       0x14u
+@@ -433,8 +433,8 @@ index 24d842f..1731726 100644
+ +	if (!sc.ready || w < 2 || h == 0 || w > SC_PANEL_W || h > SC_PANEL_H || !sc_flush_idle()) {
+ +		return false;
+ +	}
+-+	/* Both modes split at the mixers' boundary (panel x 610), as the ABL's setup does: scaled, the source splits
+-+	 * at its middle (mainline splits a plane the same way); centred, at the column that lands on x 610. */
+++	/* Both modes split at the mixers' boundary (panel x 600), as the ABL's setup does: scaled, the source splits
+++	 * at its middle (mainline splits a plane the same way); centred, at the column that lands on x 600. */
+ +	const uint32_t left = fill ? 0 : (SC_PANEL_W - w) / 2;
+ +	const uint32_t half = fill ? w / 2 : SC_HALF_W - left;
+ +	for (unsigned p = 0; p < SC_PIPES; p++) {
