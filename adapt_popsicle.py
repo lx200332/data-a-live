@@ -2,8 +2,8 @@
 """把上游 data-a-live（Xiaomi 17 Pro / pandora / 1220x2656）适配到
 Xiaomi 17 Pro Max（popsicle / 2509FPN0BC / SM8850 canoe / 1200x2608）。
 
-改动内容全部记录在同目录的 popsicle-adapt.patch 里（569 行，21 个文件，
-81 增 81 删）。本脚本只是它的应用器，保证幂等、可逆、可校验：
+改动内容全部记录在同目录的 popsicle-adapt.patch 里（659 行，26 个文件，
+90 增 90 删）。本脚本只是它的应用器，保证幂等、可逆、可校验：
 
   python3 adapt_popsicle.py --check    # 校验能否干净应用（不写文件）
   python3 adapt_popsicle.py            # 应用改动

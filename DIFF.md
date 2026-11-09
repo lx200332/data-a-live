@@ -105,7 +105,7 @@ python3 adapt_popsicle.py --revert    # 还原到上游原样
 
 ## 六、下一步（需真机）
 
-本轮只动代码，没上机。分支 `popsicle-adapt`，21 个文件 81 行增删，全在 `C:\dsh-对话\data-a-live-popsicle`，上游 `data-a-live` 保持 pristine（`db88a20`）。
+本轮只动代码，没上机。分支 `popsicle-adapt`，26 个文件 90 行增删，全在 `C:\dsh-对话\data-a-live-popsicle`，上游 `data-a-live` 保持 pristine（`db88a20`）。
 
 上机前还要做的：
 1. 用改过的 `tools/mkadt_pandora.py` 重新生成 ADT，确认 `FB_W=1200` 落到 ADT 里。
@@ -182,4 +182,43 @@ $ python3 tools/mkadt_pandora.py out.adt --dump
     不影响几何与内存段，等有 IPSW 放进去即可）
 ```
 
-**遗留**：`mkadt_pandora.py` 里还有两处 pandora 专属路径写死 `/opt/work/...`（`d22ap.adt`、日志/固件 extents 的输入），换机器跑 ADT 前要把 IPSW 放到对应位置或改这两个常量。
+**遗留（2026-11-03 已核清）**：只有 `d22ap.adt` 一处是真硬编码，且已可用环境变量 `D22AP_ADT` 覆盖；日志/固件 extents 是命令行参数 `--log-extents` / `--fw-extents`，不是常量。所以「两处」的说法要改成「一处」。
+
+**2026-11-03 补记**：`D22AP_ADT` 现在真正用上了——原厂设备树已从 IPSW 解到 `_ipsw/d22ap.adt`（186084 B，`EmbeddedDeviceTrees-7153.140.37.700.2`），生成的 ADT 带 63 条 `/product` 属性，MobileGestalt 才有正确的机型/图标。
+
+---
+
+## 十、本机构建链（2026-11-03，`loader-red8b`）
+
+上游的 `build_loader2.sh` / `mkpayload-real.py` / `preflight.py` 在本机不存在（全盘 0 命中），
+所以打包链是重写的。新增文件（都不在 `popsicle-adapt.patch` 里，属于本机工具）：
+
+| 文件 | 作用 |
+|---|---|
+| `wsl/make_image.sh` | 一键：内核 Mach-O → boot.img；参数 `--cmdline` / `--tc` / `--ref-adt` |
+| `shim/loader/build_linux.sh` | 用 WSL 的 clang/ld.lld 编 loader（不需要 Android NDK） |
+| `tools/mkpayload.py` / `tools/mkadt.py` | 从 `dipa-studio/ios-sweet` 取回的上游打包件 |
+| `tools/adt_merge_chosen.py` | 把设备 pin 的 `/chosen` 属性（UFS extents、Wi-Fi MAC）从上一次能跑的 ADT 继承过来 |
+| `tools/extract_adt.py` | 从任意 boot.img 里把 ADT 抽出来（含 gzip） |
+| `tools/split_trustcache.py` | 把 trust cache bundle 拆成单模块，并自动修排序 |
+| `tools/final_check.py` | 28 项镜像终检（结构 + 关键串） |
+| `tools/build_red8.sh` + `build_red8_body.sh` | 端到端一键重建（CI 内核 → boot.img） |
+
+**为什么内核必须走 CI**：`libfirehose_kernel.a` 只能由 `xcodebuild -target libfirehose_kernel`
+产出，`cc_kext` 也是 Xcode 自带。纯 Linux 编不出来。本机能做的是「CI 编内核 + 本机打包」。
+
+**四个坑（都踩过，别再踩）**：
+
+1. **CI 出的内核不含 Apple kext**（17 MB，AMFI / AppleImage4 全缺）。必须先
+   `tools/mkprelink.py` 从 IPSW 原厂 kernelcache 预链接，出来 55 MB 才对（ct5 是 54 MB）。
+2. **trust cache 两层封装**。IPSW 里是 IM4P（DER 开头），要先 `adt.im4p_payload()` 解；
+   解出来的条目**不保证有序**（ct5 的 mod1 有一处逆序），`addtrustcache.py` 会 assert。
+3. **`pandora-gpu-pool` 不能从旧 ADT 抄**。base = `dram-base + dram-size`，跟着内存走；
+   抄 ct5 的 `<0x9bff00000,0x40000000>` 会和新 `dram-size 0x13ff00000` 重叠 1 GiB。
+   正解：让 `mkadt_pandora.py --gpu-pool 1024` 自己算，结果 `0xfff00000 + 0x40000000 = 0x13ff00000`，
+   和 ct5 完全一致。
+4. **cmdline 含空格不能塞进 `wsl bash -lc '...'` 单引号**，会静默丢参数变成默认串。
+   写成脚本文件再执行；同理 `bash -c "$CMD"` 会再分词一次，所以主体要落成独立脚本。
+
+**产物**：`popsicle-port/boots/loader-red8b-boot.img.gz`
+（6.6 MB，解压 54759424 B，sha256 `8f8cd7f3ac4e20dfbd…`）。28 项终检全 PASS。

@@ -17,7 +17,7 @@
 #    (test file), --check hfsx reads its first block raw and wants the HFSX signature.
 # 2. WSL: ADT with those extents (mkadt_pandora.py --root-extents/--log-extents) + payload
 #    from /opt/work/runN, then shim/loader/build.sh -> shim/loader/out/loader-boot.img.
-# 3. adb reboot bootloader, check the product is pandora, fastboot boot (RAM only).
+# 3. adb reboot bootloader, check the product is popsicle (or pandora), fastboot boot (RAM only).
 # Nothing here writes to the phone's storage.
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
@@ -63,7 +63,13 @@ pinned_extents() {
 wslpath_of() { echo "/mnt/$(echo "${1:1:1}" | tr A-Z a-z)${1:2}"; }
 
 echo "== 1. phone (Android)"
-[ "$("$ADB" shell getprop ro.product.device | tr -d '\r')" = pandora ] || { echo "no pandora on adb"; exit 1; }
+# The retail image reports ro.product.device=popsicle; the DT and the older
+# internal units use the pandora prefix. Accept both, refuse anything else.
+SKU=$("$ADB" shell getprop ro.product.device | tr -d '\r')
+case "$SKU" in
+popsicle|pandora) ;;
+*) echo "no popsicle on adb (ro.product.device=$SKU)"; exit 1 ;;
+esac
 now=$(pinned_extents "$FILE")
 case $CHECK in
 pattern) su "$P rawcheck $FILE" | tail -1 | grep -q ", 0 do not" || { echo "refused: test pattern incomplete"; exit 1; } ;;
@@ -111,9 +117,12 @@ esac
 
 echo "== 2. payload (WSL, /opt/work/run$RUN)"
 # KERNEL=/opt/work/plk/kN-amfi.macho (tools/mkprelink.py) and TRUSTCACHE="IPSW trust cache..."
-# pass through to make_phone_payload.sh.
+# pass through to make_phone_payload.sh, which lives in this repo (wsl/). The
+# older line read it out of /mnt/d/DeepSeekHarness/claude/ios_pandora/, a tree
+# that no longer exists on this machine.
+ROOTW=$(wslpath_of "$ROOT")
 wsl -d Ubuntu-24.04 -u root -- bash -c "KERNEL='${KERNEL:-}' TRUSTCACHE='${TRUSTCACHE:-}' ADTFLAGS='$ADTFLAGS' CPUS=$CPUS RD=$RD DEBUG=$DEBUG NAME=out \
-	bash <(tr -d '\r' < /mnt/d/DeepSeekHarness/claude/ios_pandora/wsl/make_phone_payload.sh) /opt/work/run$RUN '$CMDLINE'" 2>&1 |
+	bash '$ROOTW/wsl/make_phone_payload.sh' /opt/work/run$RUN '$CMDLINE'" 2>&1 |
 	grep -v NodeJS | tail -3
 bash "$ROOT/shim/loader/build.sh" | tail -1
 strings_cmd=$(grep -a -o "debug=0x[0-9a-f]* serial=3 cpus=[0-9] [ -~]*" "$ROOT/shim/loader/out/payload.bin" | head -1)
@@ -132,8 +141,13 @@ echo "== 3. fastboot boot"
 seen=0
 for _ in $(seq 1 30); do sleep 2; "$FB" devices | grep -q fastboot && { seen=1; break; }; done
 # Without fastboot the phone goes on booting by itself (into the boot_b menu): stop here, nothing was booted.
-[ $seen = 1 ] || { echo "no fastboot device after 60 s: not booted"; exit 1; }
-[ "$("$FB" getvar product 2>&1 | sed -n 's/^product: //p' | tr -d '\r')" = pandora ] || { echo "fastboot device is not pandora"; exit 1; }
+[ "$seen" = 1 ] || { echo "no fastboot device after 60 s: not booted"; exit 1; }
+# Same test as on adb: the retail units answer "product: popsicle".
+SKU=$("$FB" getvar product 2>&1 | sed -n 's/^product: //p' | tr -d '\r')
+case "$SKU" in
+popsicle|pandora) ;;
+*) echo "fastboot device is not a popsicle (product=$SKU)"; exit 1 ;;
+esac
 out=$("$FB" boot "$(cygpath -w "$ROOT/shim/loader/out/loader-boot.img")" 2>&1) || { echo "$out"; echo "fastboot boot failed"; exit 1; }
 echo "$out"
 echo "$out" | grep -q "^Booting.*OKAY" || { echo "fastboot boot did not report Booting OKAY"; exit 1; }

@@ -30,7 +30,13 @@ while [ $# -gt 0 ]; do
 	esac
 done
 su() { "$ADB" shell su -c "'$*'" | tr -d '\r'; }
-[ "$("$ADB" shell getprop ro.product.device | tr -d '\r')" = pandora ] || { echo "no pandora on adb"; exit 1; }
+# ro.product.device reads "popsicle" on the retail image and "pandora" on the
+# older internal units; both are this board.
+SKU=$("$ADB" shell getprop ro.product.device | tr -d '\r')
+case "$SKU" in
+popsicle|pandora) ;;
+*) echo "no popsicle on adb (ro.product.device=$SKU)"; exit 1 ;;
+esac
 # Copies of phone data stay outside the repo.
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT

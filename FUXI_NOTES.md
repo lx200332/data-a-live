@@ -6,7 +6,7 @@
 
 看到的：
 - 补丁 0088 的注释：iOS 根目录是安卓 f2fs 数据分区里"一个固定位置、预先分配好空间的文件"（pinned, preallocated），"用户只允许用这个文件占的块"。
-- 文件占了哪些块，以"文件块号、分区块号、块数"三元组列表写进苹果设备树的 `/chosen/fuxi-root-extents`，最多 512 段。
+- 文件占了哪些块，以"文件块号、分区块号、块数"三元组列表写进苹果设备树的 `/chosen/fuxi-root-extents`。上游 ios-fuxi 的表是 512 段；本仓 PANDORA 构建把 `FX_MAX_EXTENTS` 抬到 16384（`bsd/dev/sweet_ufs.c:153-160`），一个 16 GiB 的根文件实测 **1983 段**，512 会直接截断。
 - 内核读写时按这张表换算地址；写之前检查"整段都落在某一个文件段里"，否则拒绝（`fx_write_allowed`）。只有数据分区允许写，其他分区一律只读。
 - 内核里**没有任何解密步骤**，直接读写存储上的原始数据。
 - 每次启动前，脚本会在 OrangeFox 恢复模式里用 `f2fs_io fiemap` 重新读这个文件的块位置，和设备树里的表逐项比对；再用 `f2fs_io pinfile get` 确认文件仍然是固定状态（tools/run-ios-thermal.py）。
