@@ -1,0 +1,87 @@
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -2407,14 +2407,19 @@
+  * there, and pandora_part_pread stays inside the partition found. LUN 4 is asked first, so on
+  * pandora no other LUN is touched.
+  */
+-static struct {
++/* One located partition. Callers that need two at once (modem_a for the FAT that holds
++ * /image, modemfirmware_a for modem.mdt) keep a handle each; the pp below stays as the
++ * default handle the one-partition callers already use. */
++struct pandora_part {
+ 	uint8_t lun;
+ 	uint64_t first, blocks;
+-} pp;
+-
+-int pandora_part_find(const char *name, uint32_t *lun, uint64_t *first, uint64_t *blocks);
++};
++
++static struct pandora_part pp;
++
++int pandora_part_find2(const char *name, struct pandora_part *out);
+ int
+-pandora_part_find(const char *name, uint32_t *lun, uint64_t *first, uint64_t *blocks)
++pandora_part_find2(const char *name, struct pandora_part *out)
+ {
+ 	static const uint8_t tur[6] = { 0x00 };
+ 	static const uint8_t order[8] = { 4, 0, 1, 2, 3, 5, 6, 7 };
+@@ -2440,6 +2445,17 @@
+ 	}
+ 	su.lun = 0;
+ 	lck_mtx_unlock(&sweet_ufs_lock);
++	if (!error && out) {
++		*out = pp;
++	}
++	return error;
++}
++
++int pandora_part_find(const char *name, uint32_t *lun, uint64_t *first, uint64_t *blocks);
++int
++pandora_part_find(const char *name, uint32_t *lun, uint64_t *first, uint64_t *blocks)
++{
++	int error = pandora_part_find2(name, NULL);
+ 	if (!error) {
+ 		*lun = pp.lun;
+ 		*first = pp.first;
+@@ -2449,23 +2465,23 @@
+ }
+ 
+ /* Copy len bytes at byte offset off of that partition into dst. */
+-int pandora_part_pread(uint64_t off, void *dst, uint64_t len);
++int pandora_part_pread2(const struct pandora_part *p, uint64_t off, void *dst, uint64_t len);
+ int
+-pandora_part_pread(uint64_t off, void *dst, uint64_t len)
+-{
+-	if (!pp.blocks || off + len < off || off + len > pp.blocks * UFS_BLOCK) {
++pandora_part_pread2(const struct pandora_part *p, uint64_t off, void *dst, uint64_t len)
++{
++	if (!p || !p->blocks || off + len < off || off + len > p->blocks * UFS_BLOCK) {
+ 		return EINVAL;
+ 	}
+ 	uint8_t *out = dst;
+ 	int error = 0;
+ 	lck_mtx_lock(&sweet_ufs_lock);
+-	su.lun = pp.lun;
++	su.lun = p->lun;
+ 	while (len && !error) {
+ 		uint64_t blk = off / UFS_BLOCK;
+ 		uint32_t in = (uint32_t)(off % UFS_BLOCK);
+ 		uint64_t need = (in + len + UFS_BLOCK - 1) / UFS_BLOCK;
+ 		uint32_t n = (uint32_t)MIN(need, (uint64_t)(BOUNCE_SIZE / UFS_BLOCK));
+-		error = ufs_read_blocks(pp.first + blk, n);
++		error = ufs_read_blocks(p->first + blk, n);
+ 		if (error) {
+ 			break;
+ 		}
+@@ -2480,5 +2496,11 @@
+ 	return error;
+ }
+ 
++int pandora_part_pread(uint64_t off, void *dst, uint64_t len);
++int
++pandora_part_pread(uint64_t off, void *dst, uint64_t len)
++{
++	return pandora_part_pread2(&pp, off, dst, len);
++}
+ #endif /* PANDORA */
+ #endif /* ARM64_BOARD_CONFIG_SWEET */
