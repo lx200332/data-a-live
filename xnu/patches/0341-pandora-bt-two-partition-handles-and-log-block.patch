@@ -1,0 +1,123 @@
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -78,9 +78,13 @@
+ extern void popsicle_syna_init(void);
+ extern void popsicle_goodix_init(void);
+ extern void pandora_thermal_init(void);
++extern void redwood_input_init(void);
++extern void pandora_sensors_init(void);
++extern void pandora_idle_init(void);
++extern void pandora_mem_init(void);
+ #endif
+ extern void fuxi_wlan_init(void);
+-extern void sweet_usb_probe(void);
++/* extern void sweet_usb_probe(void);  -- see the note at its old call sites */
+ 
+ #define REG_CAP         0x00
+ #define REG_IS          0x20
+@@ -1574,48 +1578,83 @@
+ 	pandora_log_start();
+ #endif
+ 	/* Touch (bsd/dev/fuxi_touch.c; rails voted by the loader). */
++	printf("PANDORA INIT: -> fuxi_touch_init\n");
+ 	fuxi_touch_init();
+ #if defined(PANDORA)
+ 	/* Main screen touch, Synaptics TouchComm (bsd/dev/pandora_touch.c). */
++	printf("PANDORA INIT: -> pandora_touch_init\n");
+ 	pandora_touch_init();
+ 	/* Speaker amplifiers, I2C probe only (bsd/dev/pandora_amp.c). */
++	printf("PANDORA INIT: -> pandora_amp_init\n");
+ 	pandora_amp_init();
+ 	/* Input self-test, boot-arg pandora_selftest (bsd/dev/pandora_selftest.c). */
++	printf("PANDORA INIT: -> pandora_selftest_init\n");
+ 	pandora_selftest_init();
+ 	/* Audio DSP bring-up, boot-arg pandora_adsp (bsd/dev/pandora_adsp.c). */
++	printf("PANDORA INIT: -> pandora_adsp_init\n");
+ 	pandora_adsp_init();
+ 	/* Files from the pinned pack into the root file system (bsd/dev/pandora_files.c). */
++	printf("PANDORA INIT: -> pandora_files_init\n");
+ 	pandora_files_init();
+ 	/* Adreno 840 bring-up, boot-arg pandora_gpu (bsd/dev/pandora_gpu.c). */
++	printf("PANDORA INIT: -> pandora_gpu_init\n");
+ 	pandora_gpu_init();
+ 	/* CPU performance probe, boot-arg pandora_cpu (bsd/dev/pandora_cpu.c). */
++	printf("PANDORA INIT: -> pandora_cpu_init\n");
+ 	pandora_cpu_init();
+ 	/* Board thermistors, read only, boot-arg pandora_therm (bsd/dev/pandora_therm.c). */
++	printf("PANDORA INIT: -> pandora_therm_init\n");
+ 	pandora_therm_init();
+ 	/* USB controller handover state, read only, boot-arg pandora_usb (bsd/dev/pandora_usb.c). */
++	printf("PANDORA INIT: -> pandora_usb_init\n");
+ 	pandora_usb_init();
++	/* USB device mode for a live console (bsd/dev/sweet_usb.c, boot-arg sweetusb=2).
++	 * Was only called on the non-FUXI path, so on this board it never ran. */
++	/* sweet_usb_probe() reads the SM8550 (sdmmagpie) GCC offsets: its
++	 * GCC_USB30_PRIM_GDSCR is 0x0f004, but on SM8850 the USB30_PRIM block sits at
++	 * 0x39000, so the read lands on an address with no slave and raises a
++	 * synchronous external abort that resets the machine. pandora_usb_init()
++	 * already probes the same controller with the right offsets, so this call is
++	 * both redundant and unsafe and is left out. */
++	printf("PANDORA INIT: -> pandora_bt_init\n");
+ 	pandora_bt_init();
++	printf("PANDORA INIT: -> pandora_modem_init\n");
+ 	pandora_modem_init();
++	printf("PANDORA INIT: -> popsicle_wifi_init\n");
+ 	popsicle_wifi_init();	/* wifi probe (needs wifi_probe=1) */
+-	popsicle_audio_init();	/* audio probe (needs audio_probe=1) */
+-	popsicle_camera_init();	/* camera probe (needs camera_probe=1) */
+-	popsicle_fp_init();	/* fp probe (needs fp_probe=1) */
+-	popsicle_modem_init();	/* modem survey (needs modem_probe=1) */
+-	popsicle_syna_init();	/* main touch SPI (needs syna=1) */
+-	popsicle_goodix_init();	/* sub touch (needs touchscreen=1) */
++	/* bisect: popsicle_audio_init is off in this variant */
++	/* bisect: popsicle_camera_init is off in this variant */
++	/* bisect: popsicle_fp_init is off in this variant */
++	/* bisect: popsicle_modem_init is off in this variant */
++	/* bisect: popsicle_syna_init is off in this variant */
++	/* bisect: popsicle_goodix_init is off in this variant */
++	printf("PANDORA INIT: -> pandora_thermal_init\n");
+ 	pandora_thermal_init();	/* thermal (needs pandora_thermal=1) */
++	printf("PANDORA INIT: -> redwood_input_init\n");
++	redwood_input_init();	/* /dev/redwood-touch queue (bsd/dev/redwood_input.c) */
++	printf("PANDORA INIT: -> pandora_sensors_init\n");
++	pandora_sensors_init();	/* sensor survey, boot-arg pandora_sensors (bsd/dev/pandora_sensors.c) */
++	/* bisect: pandora_idle_init is off in this variant */
++	/* bisect: pandora_mem_init is off in this variant */
+ #endif
+ 	/* Power / volume keys (bsd/dev/fuxi_keys.c, SPMI arbiter v7). */
++	printf("PANDORA INIT: -> fuxi_keys_init\n");
+ 	fuxi_keys_init();
+ 	/* WCN7850 PCIe0/MHI probe, boot-arg fuxiwlan (bsd/dev/fuxi_wlan.c). */
++	printf("PANDORA INIT: -> fuxi_wlan_init\n");
+ 	fuxi_wlan_init();
+ #else
+ 	sweet_log_start();
+ 	sweet_sample_start();
+ 	/* Input drivers (HID services in iokit/Kernel/arm/hid/SweetHID.cpp). */
+-	sweet_keys_init();
+-	sweet_touch_init();
+-	sweet_usb_probe();
++	/* bisect: sweet_keys_init is off in this variant */
++	/* bisect: sweet_touch_init is off in this variant */
++	/* sweet_usb_probe() reads the SM8550 (sdmmagpie) GCC offsets: its
++	 * GCC_USB30_PRIM_GDSCR is 0x0f004, but on SM8850 the USB30_PRIM block sits at
++	 * 0x39000, so the read lands on an address with no slave and raises a
++	 * synchronous external abort that resets the machine. pandora_usb_init()
++	 * already probes the same controller with the right offsets, so this call is
++	 * both redundant and unsafe and is left out. */
+ #endif
+ 	return 0;
+ }
+@@ -2484,5 +2523,12 @@
+ 	lck_mtx_unlock(&sweet_ufs_lock);
+ 	return error;
+ }
++
++int pandora_part_pread(uint64_t off, void *dst, uint64_t len);
++int
++pandora_part_pread(uint64_t off, void *dst, uint64_t len)
++{
++	return pandora_part_pread2(&pp, off, dst, len);
++}
+ #endif /* PANDORA */
+ #endif /* ARM64_BOARD_CONFIG_SWEET */

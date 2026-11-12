@@ -1,0 +1,352 @@
+--- a/bsd/dev/sweet_rpmh.c
++++ b/bsd/dev/sweet_rpmh.c
+@@ -12,28 +12,46 @@
+ 
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ int sweet_rpmh_vreg_enable(const char *res, unsigned mv);
+-
+-/* Live downstream DT has two positional reg entries, no reg-names. */
+-#define RH_RSC_PA       0x18220000u
+-#define RH_TCS_PA       0x18220d00u
++/* RPMh clock vote: one command, addr = res_addr + 4, data = 1.
++ * Linux's clk-rpmh.c has CLK_RPMH_VRM_EN_OFFSET = 4 and res_on_val = 1
++ * for every DEFINE_CLK_RPMH_VRM, so enabling a clock is a single write,
++ * not the three-command voltage sequence a regulator needs. */
++int sweet_rpmh_clk_enable(const char *res);
++
++/*
++ * SM8850 (popsicle) apps RSC, from the live FDT the phone itself reports:
++ *   /soc/rsc@18900000  compatible "qcom,rpmh-rsc"
++ *   reg-names "drv-0","drv-1","drv-2"; drv-2 = 0x18920000, 0x10000
++ *   /soc/rsc@18900000/drv@2  qcom,tcs-offset = 0xd00
++ *                            qcom,tcs-distance = 0x2a0
++ *   /soc/reserved-memory/aop_cmd_db_region@81c60000  reg = 0x81c60000, 0x20000
++ * The SM8550 pair this file used to carry (0x18220000 / 0x18220d00) is not
++ * mapped on SM8850: reading it faults with esr 0x96000010 (synchronous
++ * external abort) inside sweet_rpmh_vreg_enable. pandora_touch.c votes
++ * L4I_E0 on this same phone through 0x18920000 + 0x81c60000, so those win.
++ */
++#define RH_RSC_PA       0x18920000u
++#define RH_TCS_PA       0x18920d00u
+ #define RH_TCS_SIZE     0x3000u
+-#define RH_DICT_PA      0x0c3f000cu
++#define RH_DICT_PA      0x81c60000u
++#define RH_DICT_SIZE    0x20000u
+ #define RH_DRV          2u
+-#define RH_ACTIVE_N     2u       /* DT order: ACTIVE 2, SLEEP 3, WAKE 3 */
++#define RH_ACTIVE_N     3u       /* DT: channel@0 qcom,tcs-config = <2 3 0 2 1 ...> */
+ #define RH_NORMAL_N     8u       /* hidden CONTROL TCS is not in this bank */
+ #define RH_TCS_STRIDE   0x2a0u
+-#define RH_CMD_STRIDE   0x14u
++#define RH_CMD_STRIDE   0x18u    /* ver_3_0: 24 bytes between commands */
+ #define RH_IRQ_EN       0x00u
+ #define RH_IRQ_STATUS   0x04u
+ #define RH_IRQ_CLEAR    0x08u
+-#define RH_WAIT         0x10u
+-#define RH_CONTROL      0x14u
+-#define RH_STATUS       0x18u
+-#define RH_ENABLE       0x1cu
+-#define RH_MSGID        0x30u
+-#define RH_ADDR         0x34u
+-#define RH_DATA         0x38u
+-#define RH_CMD_STATUS   0x3cu
++#define RH_WAIT         0x20u    /* ver_3_0 offsets; this RSC reads as v4.3, and */
++#define RH_CONTROL      0x24u    /* Linux rpmh-rsc.c uses ver_3_0 for major >= 3 */
++#define RH_STATUS       0x28u
++#define RH_ENABLE       0x2cu
++#define RH_MSGID        0x34u
++#define RH_ADDR         0x38u
++#define RH_DATA         0x3cu
++#define RH_CMD_STATUS   0x40u
++#define RH_MAJOR_MIN    3u       /* below this the offsets above are wrong: refuse */
+ #define RH_AMC_EN       (1u << 16)
+ #define RH_TRIGGER      (1u << 24)
+ #define RH_ISSUED       (1u << 8)
+@@ -46,7 +64,7 @@
+ #define RH_VRM          4u
+ #define RH_TIMEOUT_US   100000u
+ 
+-static vm_offset_t rh_rsc, rh_tcs, rh_dict, rh_db;
++static vm_offset_t rh_rsc, rh_tcs, rh_db;
+ static uint32_t rh_db_size;
+ static unsigned rh_ncpt;
+ static unsigned rh_lock;
+@@ -106,11 +124,8 @@
+ 	if (!rh_tcs) {
+ 		rh_tcs = ml_io_map(RH_TCS_PA, RH_TCS_SIZE);
+ 	}
+-	if (!rh_dict) {
+-		rh_dict = ml_io_map(RH_DICT_PA, 8);
+-	}
+-	if (!rh_rsc || !rh_tcs || !rh_dict) {
+-		printf("SWEET RPMH: RSC/locator mapping failed\n");
++	if (!rh_rsc || !rh_tcs) {
++		printf("SWEET RPMH: RSC mapping failed\n");
+ 		return ENOMEM;
+ 	}
+ 	uint32_t id = rh_read(rh_rsc, 0);
+@@ -121,29 +136,20 @@
+ 	rh_ncpt = (config >> 27) & 0x1fu;
+ 	printf("SWEET RPMH: rsc=%#x tcs=%#x DRV=%u id=%#x solver=%#x config=%#x TCS=%u ncpt=%u\n",
+ 	    RH_RSC_PA, RH_TCS_PA, RH_DRV, id, solver, config, count, rh_ncpt);
+-	/* This client implements the pre-v3 layout only; do not guess v3 offsets. */
+-	if ((major != 1 && major != 2) || config == 0xffffffffu ||
++	/* v3 layout only. A v1/v2 bank would need the 0x10/0x14/... offsets. */
++	if (major < RH_MAJOR_MIN || config == 0xffffffffu ||
+ 	    solver == 0xffffffffu || count < RH_NORMAL_N ||
+ 	    count > RH_TCS_SIZE / RH_TCS_STRIDE || rh_ncpt < 3 || rh_ncpt > 16) {
+ 		printf("SWEET RPMH: unsupported RSC geometry/revision\n");
+ 		return ENODEV;
+ 	}
+ 	if (!rh_db) {
+-		uint32_t pa = rh_read(rh_dict, 0);
+-		uint32_t size = rh_read(rh_dict, 4);
+-		printf("SWEET RPMH: cmd-db locator=%#x pa=%#x size=%#x\n", RH_DICT_PA, pa, size);
+-		/* Firmware supplies the reserved RAM address; never scan physical RAM. */
+-		if (pa < 0x80000000u || (pa & 3u) || (size & 3u) ||
+-		    size < RH_DB_HEADER || size > RH_DB_MAX ||
+-		    (uint64_t)pa + size > 0x100000000ULL) {
+-			printf("SWEET RPMH: invalid cmd-db locator\n");
+-			return EINVAL;
+-		}
+-		rh_db = ml_io_map(pa, size);
++		printf("SWEET RPMH: cmd-db region=%#x size=%#x\n", RH_DICT_PA, RH_DICT_SIZE);
++		rh_db = ml_io_map(RH_DICT_PA, RH_DICT_SIZE);
+ 		if (!rh_db) {
+ 			return ENOMEM;
+ 		}
+-		rh_db_size = size;
++		rh_db_size = RH_DICT_SIZE;
+ 	}
+ 	uint32_t db_version = rh_read(rh_db, 0);
+ 	uint32_t magic = rh_read(rh_db, 4);
+@@ -186,7 +192,12 @@
+ 				continue;
+ 			}
+ 			uint32_t addr = rh_read(rh_db, e + 16);
+-			if (slave != RH_VRM || (addr >> 16) != RH_VRM || (addr & 15u) ||
++			/* A regulator entry is a slave-4 VRM address in a 16-byte
++			 * command slot; a clock entry (C1A_E0 and friends) has the
++			 * same entry shape but only obeys the low-nibble rule, so the
++			 * (addr >> 16) == RH_VRM test would reject it. Keep the slave
++			 * and alignment checks, drop the VRM-only one. */
++			if (slave != RH_VRM || (addr & 15u) ||
+ 			    !rh_range(aux + rh_db16(e + 22), rh_db16(e + 20))) {
+ 				printf("SWEET RPMH: invalid VRM entry for %s\n", res);
+ 				return EINVAL;
+@@ -218,6 +229,102 @@
+ 	    !(rh_read(rh_tcs, RH_IRQ_STATUS) & (1u << t));
+ }
+ 
++/*
++ * One-command variant of rh_send() for a clock resource: same TCS claim, same
++ * irq masking, same trigger and completion poll, but a single command whose
++ * data is the enable value instead of the three {voltage, mode, enable} words
++ * a regulator takes.
++ */
++static int
++rh_send_clk(uint32_t address)
++{
++	int chosen = -1;
++	for (unsigned t = 0; t < RH_ACTIVE_N; ++t) {
++		uint32_t b = t * RH_TCS_STRIDE;
++		uint32_t enabled = rh_read(rh_tcs, b + RH_ENABLE);
++		if (enabled & ~((1u << rh_ncpt) - 1u)) {
++			return EIO;
++		}
++		for (unsigned c = 0; c < rh_ncpt; ++c) {
++			if ((enabled & (1u << c)) &&
++			    (rh_read(rh_tcs, b + RH_ADDR + c * RH_CMD_STRIDE) & ~15u) == address) {
++				printf("SWEET RPMH: conflicting inherited clock request in TCS%u\n", t);
++				return EBUSY;
++			}
++		}
++		if (chosen < 0 && rh_free(t)) {
++			chosen = (int)t;
++		}
++	}
++	if (chosen < 0) {
++		printf("SWEET RPMH: no empty idle ACTIVE TCS for the clock vote\n");
++		return EBUSY;
++	}
++	unsigned t = (unsigned)chosen;
++	uint32_t b = t * RH_TCS_STRIDE, bit = 1u << t;
++	uint32_t irq_en = rh_read(rh_tcs, RH_IRQ_EN);
++	if (irq_en == 0xffffffffu || !rh_free(t)) {
++		return EBUSY;
++	}
++	if (!rh_sync(RH_IRQ_EN, irq_en & ~bit)) {
++		rh_poisoned = true;
++		return EIO;
++	}
++	if (!rh_free(t)) {
++		if (!rh_sync(RH_IRQ_EN, (rh_read(rh_tcs, RH_IRQ_EN) & ~bit) | (irq_en & bit))) {
++			rh_poisoned = true;
++		}
++		return EBUSY;
++	}
++	rh_poisoned = true;
++	/* clk-rpmh.c: res_addr = CLK_RPMH_VRM_EN_OFFSET (4), res_on_val = 1. */
++	if (!rh_sync(b + RH_MSGID, RH_WRITE_ACK) ||
++	    !rh_sync(b + RH_ADDR, address + 4u) ||
++	    !rh_sync(b + RH_DATA, 1u)) {
++		return EIO;
++	}
++	if (!rh_sync(b + RH_WAIT, 1) || !rh_sync(b + RH_ENABLE, 1) ||
++	    !rh_sync(b + RH_CONTROL, 0) || !rh_sync(b + RH_CONTROL, RH_AMC_EN)) {
++		return EIO;
++	}
++	rh_write(rh_tcs, b + RH_CONTROL, RH_AMC_EN | RH_TRIGGER);
++	uint32_t irq = 0, idle = 0, status = 0;
++	bool done = false, progress = false;
++	for (unsigned us = 0; us < RH_TIMEOUT_US; ++us) {
++		irq = rh_read(rh_tcs, RH_IRQ_STATUS);
++		idle = rh_read(rh_tcs, b + RH_STATUS);
++		status = rh_read(rh_tcs, b + RH_CMD_STATUS);
++		bool complete = status != 0xffffffffu &&
++		    (status & (RH_ISSUED | RH_COMPLETE)) == (RH_ISSUED | RH_COMPLETE);
++		progress |= idle == 0 || !complete;
++		if (idle && idle != 0xffffffffu && irq != 0xffffffffu &&
++		    ((irq & bit) || progress) && complete) {
++			done = true;
++			break;
++		}
++		delay(1);
++	}
++	printf("SWEET RPMH: clock TCS%u done=%d irq=%#x idle=%#x cmd-status=%#x\n",
++	    t, done, irq, idle, status);
++	if (!done) {
++		printf("SWEET RPMH: clock vote timed out; TCS quarantined\n");
++		return ETIMEDOUT;
++	}
++	if (!rh_sync(b + RH_CONTROL, RH_AMC_EN) || !rh_sync(b + RH_CONTROL, 0) ||
++	    !rh_sync(b + RH_ENABLE, 0) || !rh_sync(b + RH_WAIT, 0)) {
++		return EIO;
++	}
++	rh_write(rh_tcs, RH_IRQ_CLEAR, bit);
++	if ((rh_read(rh_tcs, RH_IRQ_STATUS) & bit) ||
++	    !rh_sync(RH_IRQ_EN, (rh_read(rh_tcs, RH_IRQ_EN) & ~bit) | (irq_en & bit))) {
++		return EIO;
++	}
++	rh_poisoned = false;
++	printf("SWEET RPMH: clock vote complete for address %#x (on value 1)\n",
++	    address);
++	return 0;
++}
++
+ static int
+ rh_send(uint32_t address, unsigned mv)
+ {
+@@ -320,16 +427,108 @@
+ 		return EIO;
+ 	}
+ 	rh_poisoned = false;
+-	printf("SWEET RPMH: L11C ACTIVE vote complete (rail voltage requires hardware verification)\n");
++	printf("SWEET RPMH: ACTIVE vote complete for address %#x at %u mV "
++	    "(rail voltage requires hardware verification)\n", address, mv);
+ 	return 0;
+ }
+ 
++/*
++ * The clock vote.  peach-bt's dts names one clock, "bt_rf_clk1", whose
++ * provider is rpmhcc (canoe_base.dts __symbols__: rpmhcc =
++ * ".../rsc@18900000/drv@2/clock-controller", #clock-cells = 1).  Index 6 of
++ * that provider is C1A_E0: clk-rpmh.c has DEFINE_CLK_RPMH_VRM(clk1, _a1_e0,
++ * "C1A_E0", 1), and Android's clk_summary shows the matching row
++ * "c1a_e0 ... 76800000 ... hardware enable Y".  That 76.8 MHz reference is
++ * what the SoC needs before it will drive its BT TX pad at all.
++ */
++int
++sweet_rpmh_clk_enable(const char *res)
++{
++	if (!res || !res[0]) {
++		return EINVAL;
++	}
++	if (__atomic_exchange_n(&rh_lock, 1, __ATOMIC_ACQUIRE)) {
++		return EBUSY;
++	}
++	int error = EIO;
++	uint32_t address = 0;
++	if (rh_poisoned) {
++		printf("SWEET RPMH: previous uncertain transaction; refusing further access\n");
++		goto out;
++	}
++	error = rh_map();
++	if (!error) {
++		error = rh_lookup(res, &address);
++	}
++	if (!error) {
++		error = rh_send_clk(address);
++	}
++out:
++	if (error) {
++		printf("SWEET RPMH: clock enable %s failed errno=%d\n", res, error);
++	}
++	__atomic_store_n(&rh_lock, 0, __ATOMIC_RELEASE);
++	return error;
++}
++
++/*
++ * Rails this helper is allowed to vote for, and the window each one accepts.
++ *
++ * The first revision of this file served a single caller (sweet_touch.c, "ldoc11"
++ * at 3200 mV) and enforced that with a strcmp().  peach-bt needs seven more, so the
++ * policy is a table now.  Windows are the min/max from canoe_base.dts's
++ * rpmh-regulator-* nodes, converted from uV to mV; the vote voltage is the node's
++ * init value.
++ *
++ *   S2J_E1  pmh0104_s2    min  500 max 1100   init  852  (dig, aon, rfa0p75)
++ *   S7F_E0  pmh0110_f_s7  min 1224 max 1372   init 1256  (bt-vdd-rfa1p25)
++ *   S8F_E0  pmh0110_f_s8  min 1800 max 2000   init 1857  (bt-vdd-rfa1p8)
++ *   L2G_E0  pmh0110_g_l2  min=max 1800        init 1800  (bt-vdd18-aon)
++ *   L3G_E0  pmh0110_g_l3  min=max 1200        init 1200  (bt-vdd12-io)
++ *   S1J_E1  pmh0104_s1    min  400 max 1000   init  852  (bt-vdd-wlan-aon)
++ *   L6K_E1  pmr735d_l6    min 1700 max 2000   init 1700  (bt-ant-ldo)
++ *
++ * The _E0/_E1 suffix is part of the cmd-db key, not decoration: rh_lookup() hashes
++ * the first eight bytes of the name and cmd-db stores the suffixed form.
++ */
++struct rh_rail {
++	const char *res;
++	unsigned min_mv;
++	unsigned max_mv;
++};
++
++static const struct rh_rail rh_rails[] = {
++	/* touch panel; exactly the arguments sweet_touch.c already passes */
++	{ "ldoc11",  2950, 3400 },
++	/* Bluetooth, in btpower.ko's bring-up order */
++	{ "S2J_E1",   500, 1100 },
++	{ "S7F_E0",  1224, 1372 },
++	{ "S8F_E0",  1800, 2000 },
++	{ "L2G_E0",  1800, 1800 },
++	{ "L3G_E0",  1200, 1200 },
++	{ "S1J_E1",   400, 1000 },
++	{ "L6K_E1",  1700, 2000 },
++};
++
+ int
+ sweet_rpmh_vreg_enable(const char *res, unsigned mv)
+ {
+-	/* Board-specific helper: do not apply PMIC5-LDO policy to arbitrary resources. */
+-	if (!res || strcmp(res, "ldoc11") || mv < 2950 || mv > 3400) {
+-		printf("SWEET RPMH: expected ldoc11 and 2950..3400 mV\n");
++	/* Board-specific policy: only the rails above, only inside their window. */
++	const struct rh_rail *rail = NULL;
++	for (unsigned i = 0; res && i < sizeof(rh_rails) / sizeof(rh_rails[0]); ++i) {
++		if (!strcmp(res, rh_rails[i].res)) {
++			rail = &rh_rails[i];
++			break;
++		}
++	}
++	if (!rail) {
++		printf("SWEET RPMH: %s is not on the allowed rail list\n",
++		    res ? res : "(null)");
++		return EINVAL;
++	}
++	if (mv < rail->min_mv || mv > rail->max_mv) {
++		printf("SWEET RPMH: %s accepts %u..%u mV, not %u\n",
++		    res, rail->min_mv, rail->max_mv, mv);
+ 		return EINVAL;
+ 	}
+ 	if (__atomic_exchange_n(&rh_lock, 1, __ATOMIC_ACQUIRE)) {
